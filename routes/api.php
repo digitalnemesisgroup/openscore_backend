@@ -67,6 +67,7 @@ Route::get('/settings/fee-config', [LoanApplicationController::class, 'getFeeCon
 
 
 // Loan Application Routes
+Route::get('/loan/track', [LoanApplicationController::class, 'trackApplication']);
 Route::get('/loan/applicant-profile', [LoanApplicationController::class, 'getApplicantProfile']);
 Route::post('/loan/apply', [LoanApplicationController::class, 'store']);
 Route::post('/loan/apply/{id}/tenure', [LoanApplicationController::class, 'updateTenure']);
@@ -88,6 +89,27 @@ Route::get('/partners', [LoanApplicationController::class, 'getAffiliatePartners
 Route::get('/admin/partners', [LoanApplicationController::class, 'getAffiliatePartners']);
 Route::post('/admin/partners', [LoanApplicationController::class, 'saveAffiliatePartners']);
 Route::delete('/admin/partners/{id}', [LoanApplicationController::class, 'deleteAffiliatePartner']);
+
+use App\Http\Controllers\UrgentConstructionLoanController;
+use App\Http\Controllers\EliteCashLoanController;
+
+// Urgent Construction Loan Endpoints
+Route::post('/loan/urgent-construction/apply', [UrgentConstructionLoanController::class, 'apply']);
+Route::post('/loan/urgent-construction/{id}/payment', [UrgentConstructionLoanController::class, 'submitPayment']);
+Route::post('/loan/urgent-construction/{id}/additional-docs', [UrgentConstructionLoanController::class, 'submitAdditionalDocs']);
+Route::get('/loan/urgent-construction/active', [UrgentConstructionLoanController::class, 'getActiveUserApp']);
+Route::get('/loan/urgent-construction/{id}', [UrgentConstructionLoanController::class, 'show']);
+Route::get('/admin/urgent-construction-loans', [UrgentConstructionLoanController::class, 'adminIndex']);
+Route::post('/admin/urgent-construction-loans/{id}/action', [UrgentConstructionLoanController::class, 'adminAction']);
+
+// Elite Cash Loan Endpoints
+Route::post('/loan/elite-cash/apply', [EliteCashLoanController::class, 'apply']);
+Route::post('/loan/elite-cash/{id}/payment', [EliteCashLoanController::class, 'submitPayment']);
+Route::post('/loan/elite-cash/{id}/additional-docs', [EliteCashLoanController::class, 'submitAdditionalDocs']);
+Route::get('/loan/elite-cash/active', [EliteCashLoanController::class, 'getActiveUserApp']);
+Route::get('/loan/elite-cash/{id}', [EliteCashLoanController::class, 'show']);
+Route::get('/admin/elite-cash-loans', [EliteCashLoanController::class, 'adminIndex']);
+Route::post('/admin/elite-cash-loans/{id}/action', [EliteCashLoanController::class, 'adminAction']);
 
 // Virtual Loan Application Endpoints
 Route::post('/loan/virtual-apply', [LoanApplicationController::class, 'virtualApply']);

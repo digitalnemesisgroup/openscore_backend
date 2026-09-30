@@ -204,7 +204,9 @@ class LoanApplicationController extends Controller
             'indicative_min_amount' => $minAmount,
             'indicative_max_amount' => $maxAmount,
             'indicative_interest_rate' => 8.5,
-            'processing_fee' => 999.00,
+            'processing_fee' => self::calculateApplicableFee($validated['loan_type'], $required, $cibilType),
+            'fee_amount' => self::calculateApplicableFee($validated['loan_type'], $required, $cibilType),
+            'payment_upi_id' => SystemSetting::get('upi_id', 'flipflops@upi'),
             'payment_status' => 'unpaid',
             'status' => 'indicative_approved',
         ]);
@@ -239,6 +241,45 @@ class LoanApplicationController extends Controller
             'message' => 'Indicative eligibility calculated successfully',
             'data' => $loanApp,
         ], 201);
+    }
+
+    public function trackApplication(Request $request)
+    {
+        $query = trim($request->get('query', ''));
+        if (empty($query)) {
+            return response()->json(['status' => 'error', 'message' => 'Please provide an application number, loan ID or mobile number.'], 422);
+        }
+
+        $cleanMobile = preg_replace('/[^0-9]/', '', $query);
+
+        $app = LoanApplication::where(function($q) use ($query, $cleanMobile) {
+            $q->where('application_number', $query)
+              ->orWhere('application_no', $query)
+              ->orWhere('id', $query)
+              ->orWhere('transaction_id', $query);
+            if (strlen($cleanMobile) >= 10) {
+                $q->orWhere('mobile_number', $cleanMobile);
+            }
+        })->latest()->first();
+
+        if (!$app) {
+            return response()->json(['status' => 'error', 'message' => 'No loan application found matching this reference.'], 404);
+        }
+
+        $isUrgentConst = $app->loan_type === 'urgent_construction_loan';
+        $isEliteCash = $app->loan_type === 'elite_cash_loan';
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $app,
+            'is_urgent' => (bool) $app->is_urgent,
+            'loan_type' => $app->loan_type,
+            'tracker_url' => $isEliteCash
+                ? "/loan/apply/cash-loan/elite/status?id={$app->id}"
+                : ($isUrgentConst
+                    ? "/loan/apply/construction-loan/urgent/status?id={$app->id}"
+                    : "/loan/my-loans/details?id={$app->id}"),
+        ]);
     }
 
     /**
@@ -943,6 +984,53 @@ class LoanApplicationController extends Controller
         ]);
     }
 
+    public static function calculateApplicableFee(string $loanType, float $principal, ?string $cibilType = null): float
+    {
+        // 1. Virtual Card / Loan / Voucher (Single Activation / Processing Fee)
+        if (str_contains($loanType, 'virtual') || str_contains($loanType, 'voucher')) {
+            $type = SystemSetting::get('virtual_loan_fee_type', 'fixed');
+            $val = (float) SystemSetting::get('virtual_loan_fee_value', 299);
+            return ($type === 'percentage') ? max(1, round($principal * ($val / 100), 2)) : $val;
+        }
+
+        // 2. Construction Loan (3 Tiers: Without CIBIL, Low CIBIL, High CIBIL >700)
+        if (str_contains($loanType, 'construction')) {
+            $isHigh = ($loanType === 'construction_good_cibil' || $loanType === 'construction_high_cibil' || $cibilType === 'good_cibil' || $cibilType === 'high_cibil');
+            $isLow = ($loanType === 'construction_low_cibil' || $cibilType === 'low_cibil');
+
+            if ($isHigh) {
+                $type = SystemSetting::get('construction_loan_high_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed'));
+                $val = (float) SystemSetting::get('construction_loan_high_cibil_fee_value', 499);
+            } elseif ($isLow) {
+                $type = SystemSetting::get('construction_loan_low_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed'));
+                $val = (float) SystemSetting::get('construction_loan_low_cibil_fee_value', 999);
+            } else {
+                // Without CIBIL (or default construction loan)
+                $type = SystemSetting::get('construction_loan_without_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed'));
+                $val = (float) SystemSetting::get('construction_loan_without_cibil_fee_value', SystemSetting::get('construction_loan_fee_value', 999));
+            }
+            return ($type === 'percentage') ? max(1, round($principal * ($val / 100), 2)) : $val;
+        }
+
+        // 3. Cash Loan (3 Tiers: Without CIBIL, Low CIBIL, High CIBIL >700)
+        $isHigh = ($loanType === 'good_cibil' || $loanType === 'high_cibil' || $cibilType === 'good_cibil' || $cibilType === 'high_cibil');
+        $isLow = ($loanType === 'low_cibil' || $cibilType === 'low_cibil');
+
+        if ($isHigh) {
+            $type = SystemSetting::get('cash_loan_high_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed'));
+            $val = (float) SystemSetting::get('cash_loan_high_cibil_fee_value', SystemSetting::get('cash_loan_good_cibil_fee_value', 499));
+        } elseif ($isLow) {
+            $type = SystemSetting::get('cash_loan_low_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed'));
+            $val = (float) SystemSetting::get('cash_loan_low_cibil_fee_value', 999);
+        } else {
+            // Without CIBIL (or default cash loan)
+            $type = SystemSetting::get('cash_loan_without_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed'));
+            $val = (float) SystemSetting::get('cash_loan_without_cibil_fee_value', SystemSetting::get('cash_loan_fee_value', 999));
+        }
+
+        return ($type === 'percentage') ? max(1, round($principal * ($val / 100), 2)) : $val;
+    }
+
     public static function getCooldownDays()
     {
         return (int) SystemSetting::get('reapplication_cooldown_days', 3);
@@ -979,18 +1067,70 @@ class LoanApplicationController extends Controller
 
     public function getFeeConfig()
     {
+        $cashLoginFee = (float) SystemSetting::get('cash_loan_login_fee', 500);
+        $cashDocFee = (float) SystemSetting::get('cash_loan_doc_fee', 200);
+        $cashVerifFee = (float) SystemSetting::get('cash_loan_verification_fee', 299);
+        $cashTotalFee = $cashLoginFee + $cashDocFee + $cashVerifFee;
+
+        $constLoginFee = (float) SystemSetting::get('construction_loan_login_fee', 500);
+        $constDocFee = (float) SystemSetting::get('construction_loan_doc_fee', 300);
+        $constSiteFee = (float) SystemSetting::get('construction_loan_site_verification_fee', 699);
+        $constTotalFee = $constLoginFee + $constDocFee + $constSiteFee;
+
         return response()->json([
             'status' => 'success',
             'data' => [
                 'upi_id' => SystemSetting::get('upi_id', 'flipflops@upi'),
                 'upi_payee_name' => SystemSetting::get('upi_payee_name', 'OpenScore Finance'),
-                'cash_loan_fee_type' => SystemSetting::get('cash_loan_fee_type', 'fixed'),
-                'cash_loan_fee_value' => (float) SystemSetting::get('cash_loan_fee_value', 999),
-                'cash_loan_good_cibil_fee_value' => (float) SystemSetting::get('cash_loan_good_cibil_fee_value', 499),
-                'construction_loan_fee_type' => SystemSetting::get('construction_loan_fee_type', 'fixed'),
-                'construction_loan_fee_value' => (float) SystemSetting::get('construction_loan_fee_value', 999),
+
+                // Cash Loan / Elite Loan Itemized Breakdown
+                'cash_loan_login_fee' => $cashLoginFee,
+                'cash_loan_doc_fee' => $cashDocFee,
+                'cash_loan_verification_fee' => $cashVerifFee,
+                'cash_loan_total_processing_fee' => $cashTotalFee,
+                'cash_loan_breakdown' => [
+                    ['label' => 'Login / Portal Activation Fee', 'amount' => $cashLoginFee],
+                    ['label' => 'Document & KYC Processing Fee', 'amount' => $cashDocFee],
+                    ['label' => 'Express Risk & Sanction Verification Fee', 'amount' => $cashVerifFee],
+                ],
+
+                // Construction Loan / Urgent Construction Itemized Breakdown
+                'construction_loan_login_fee' => $constLoginFee,
+                'construction_loan_doc_fee' => $constDocFee,
+                'construction_loan_site_verification_fee' => $constSiteFee,
+                'construction_loan_total_processing_fee' => $constTotalFee,
+                'construction_loan_breakdown' => [
+                    ['label' => 'Application Login & Portal Registration', 'amount' => $constLoginFee],
+                    ['label' => 'Document & Title Verification Fee', 'amount' => $constDocFee],
+                    ['label' => 'Site & Technical Inspection Fee', 'amount' => $constSiteFee],
+                ],
+
+                // Cash Loan - 3 Tiers
+                'cash_loan_without_cibil_fee_type' => SystemSetting::get('cash_loan_without_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed')),
+                'cash_loan_without_cibil_fee_value' => (float) SystemSetting::get('cash_loan_without_cibil_fee_value', $cashTotalFee),
+                'cash_loan_low_cibil_fee_type' => SystemSetting::get('cash_loan_low_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed')),
+                'cash_loan_low_cibil_fee_value' => (float) SystemSetting::get('cash_loan_low_cibil_fee_value', $cashTotalFee),
+                'cash_loan_high_cibil_fee_type' => SystemSetting::get('cash_loan_high_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed')),
+                'cash_loan_high_cibil_fee_value' => (float) SystemSetting::get('cash_loan_high_cibil_fee_value', SystemSetting::get('cash_loan_good_cibil_fee_value', 499)),
+
+                // Construction Loan - 3 Tiers
+                'construction_loan_without_cibil_fee_type' => SystemSetting::get('construction_loan_without_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed')),
+                'construction_loan_without_cibil_fee_value' => (float) SystemSetting::get('construction_loan_without_cibil_fee_value', $constTotalFee),
+                'construction_loan_low_cibil_fee_type' => SystemSetting::get('construction_loan_low_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed')),
+                'construction_loan_low_cibil_fee_value' => (float) SystemSetting::get('construction_loan_low_cibil_fee_value', $constTotalFee),
+                'construction_loan_high_cibil_fee_type' => SystemSetting::get('construction_loan_high_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed')),
+                'construction_loan_high_cibil_fee_value' => (float) SystemSetting::get('construction_loan_high_cibil_fee_value', 499),
+
+                // Virtual Card / Loan / Voucher - Single Fee
                 'virtual_loan_fee_type' => SystemSetting::get('virtual_loan_fee_type', 'fixed'),
                 'virtual_loan_fee_value' => (float) SystemSetting::get('virtual_loan_fee_value', 299),
+
+                // Legacy aliases for backward compatibility
+                'cash_loan_fee_type' => SystemSetting::get('cash_loan_without_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed')),
+                'cash_loan_fee_value' => (float) SystemSetting::get('cash_loan_without_cibil_fee_value', $cashTotalFee),
+                'cash_loan_good_cibil_fee_value' => (float) SystemSetting::get('cash_loan_high_cibil_fee_value', SystemSetting::get('cash_loan_good_cibil_fee_value', 499)),
+                'construction_loan_fee_type' => SystemSetting::get('construction_loan_without_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed')),
+                'construction_loan_fee_value' => (float) SystemSetting::get('construction_loan_without_cibil_fee_value', $constTotalFee),
             ],
         ]);
     }
@@ -1000,41 +1140,85 @@ class LoanApplicationController extends Controller
         $request->validate([
             'upi_id' => 'nullable|string',
             'upi_payee_name' => 'nullable|string',
+
+            // Itemized breakdown
+            'cash_loan_login_fee' => 'nullable|numeric|min:0',
+            'cash_loan_doc_fee' => 'nullable|numeric|min:0',
+            'cash_loan_verification_fee' => 'nullable|numeric|min:0',
+
+            'construction_loan_login_fee' => 'nullable|numeric|min:0',
+            'construction_loan_doc_fee' => 'nullable|numeric|min:0',
+            'construction_loan_site_verification_fee' => 'nullable|numeric|min:0',
+
+            'cash_loan_without_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
+            'cash_loan_without_cibil_fee_value' => 'nullable|numeric|min:0',
+            'cash_loan_low_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
+            'cash_loan_low_cibil_fee_value' => 'nullable|numeric|min:0',
+            'cash_loan_high_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
+            'cash_loan_high_cibil_fee_value' => 'nullable|numeric|min:0',
+
+            'construction_loan_without_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
+            'construction_loan_without_cibil_fee_value' => 'nullable|numeric|min:0',
+            'construction_loan_low_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
+            'construction_loan_low_cibil_fee_value' => 'nullable|numeric|min:0',
+            'construction_loan_high_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
+            'construction_loan_high_cibil_fee_value' => 'nullable|numeric|min:0',
+
+            'virtual_loan_fee_type' => 'nullable|string|in:fixed,percentage',
+            'virtual_loan_fee_value' => 'nullable|numeric|min:0',
+
+            // Legacy keys support
             'cash_loan_fee_type' => 'nullable|string|in:fixed,percentage',
             'cash_loan_fee_value' => 'nullable|numeric|min:0',
             'cash_loan_good_cibil_fee_value' => 'nullable|numeric|min:0',
             'construction_loan_fee_type' => 'nullable|string|in:fixed,percentage',
             'construction_loan_fee_value' => 'nullable|numeric|min:0',
-            'virtual_loan_fee_type' => 'nullable|string|in:fixed,percentage',
-            'virtual_loan_fee_value' => 'nullable|numeric|min:0',
         ]);
 
-        if ($request->has('upi_id') && !empty($request->upi_id)) {
-            SystemSetting::set('upi_id', trim($request->upi_id));
+        $fields = [
+            'upi_id', 'upi_payee_name',
+            'cash_loan_login_fee', 'cash_loan_doc_fee', 'cash_loan_verification_fee',
+            'construction_loan_login_fee', 'construction_loan_doc_fee', 'construction_loan_site_verification_fee',
+            'cash_loan_without_cibil_fee_type', 'cash_loan_without_cibil_fee_value',
+            'cash_loan_low_cibil_fee_type', 'cash_loan_low_cibil_fee_value',
+            'cash_loan_high_cibil_fee_type', 'cash_loan_high_cibil_fee_value',
+            'construction_loan_without_cibil_fee_type', 'construction_loan_without_cibil_fee_value',
+            'construction_loan_low_cibil_fee_type', 'construction_loan_low_cibil_fee_value',
+            'construction_loan_high_cibil_fee_type', 'construction_loan_high_cibil_fee_value',
+            'virtual_loan_fee_type', 'virtual_loan_fee_value',
+            'cash_loan_fee_type', 'cash_loan_fee_value', 'cash_loan_good_cibil_fee_value',
+            'construction_loan_fee_type', 'construction_loan_fee_value',
+        ];
+
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                $val = $request->input($field);
+                if (is_numeric($val)) {
+                    SystemSetting::set($field, (float) $val);
+                } else if ($val !== null && $val !== '') {
+                    SystemSetting::set($field, trim($val));
+                }
+            }
         }
-        if ($request->has('upi_payee_name')) {
-            SystemSetting::set('upi_payee_name', trim($request->upi_payee_name));
+
+        // If itemized cash loan components were passed, sync without_cibil fee value if needed
+        if ($request->has('cash_loan_login_fee') || $request->has('cash_loan_doc_fee') || $request->has('cash_loan_verification_fee')) {
+            $totalCash = (float) SystemSetting::get('cash_loan_login_fee', 500) + 
+                         (float) SystemSetting::get('cash_loan_doc_fee', 200) + 
+                         (float) SystemSetting::get('cash_loan_verification_fee', 299);
+            if (!$request->has('cash_loan_without_cibil_fee_value')) {
+                SystemSetting::set('cash_loan_without_cibil_fee_value', $totalCash);
+            }
         }
-        if ($request->has('cash_loan_fee_type')) {
-            SystemSetting::set('cash_loan_fee_type', $request->cash_loan_fee_type);
-        }
-        if ($request->has('cash_loan_fee_value')) {
-            SystemSetting::set('cash_loan_fee_value', (float) $request->cash_loan_fee_value);
-        }
-        if ($request->has('cash_loan_good_cibil_fee_value')) {
-            SystemSetting::set('cash_loan_good_cibil_fee_value', (float) $request->cash_loan_good_cibil_fee_value);
-        }
-        if ($request->has('construction_loan_fee_type')) {
-            SystemSetting::set('construction_loan_fee_type', $request->construction_loan_fee_type);
-        }
-        if ($request->has('construction_loan_fee_value')) {
-            SystemSetting::set('construction_loan_fee_value', (float) $request->construction_loan_fee_value);
-        }
-        if ($request->has('virtual_loan_fee_type')) {
-            SystemSetting::set('virtual_loan_fee_type', $request->virtual_loan_fee_type);
-        }
-        if ($request->has('virtual_loan_fee_value')) {
-            SystemSetting::set('virtual_loan_fee_value', (float) $request->virtual_loan_fee_value);
+
+        // If itemized construction loan components were passed, sync without_cibil fee value if needed
+        if ($request->has('construction_loan_login_fee') || $request->has('construction_loan_doc_fee') || $request->has('construction_loan_site_verification_fee')) {
+            $totalConst = (float) SystemSetting::get('construction_loan_login_fee', 500) + 
+                          (float) SystemSetting::get('construction_loan_doc_fee', 300) + 
+                          (float) SystemSetting::get('construction_loan_site_verification_fee', 699);
+            if (!$request->has('construction_loan_without_cibil_fee_value')) {
+                SystemSetting::set('construction_loan_without_cibil_fee_value', $totalConst);
+            }
         }
 
         return $this->getFeeConfig();
@@ -1174,6 +1358,8 @@ class LoanApplicationController extends Controller
             'interest_rate_pa' => 'nullable|string',
             'processing_fee' => 'nullable|numeric|min:0',
             'fee_amount' => 'nullable|numeric|min:0',
+            'payment_upi_id' => 'nullable|string',
+            'upi_id' => 'nullable|string',
             'approved_amount' => 'nullable|numeric|min:5000',
             'selected_amount' => 'nullable|numeric|min:5000',
             'selected_tenure' => 'nullable|integer',
@@ -1191,6 +1377,12 @@ class LoanApplicationController extends Controller
             $loanApp->interest_rate_pa = (string) $request->interest_rate_pa;
             $rate = (float) preg_replace('/[^0-9.]/', '', $request->interest_rate_pa);
             if ($rate > 0) $loanApp->indicative_interest_rate = $rate;
+        }
+
+        if ($request->has('payment_upi_id') && !empty($request->payment_upi_id)) {
+            $loanApp->payment_upi_id = trim($request->payment_upi_id);
+        } elseif ($request->has('upi_id') && !empty($request->upi_id)) {
+            $loanApp->payment_upi_id = trim($request->upi_id);
         }
 
         if ($request->has('processing_fee')) {
@@ -1433,6 +1625,16 @@ class LoanApplicationController extends Controller
                 ], 403);
             }
         }
+
+        if (!$application->fee_amount && !$application->processing_fee) {
+            $principal = (float) ($application->required_amount ?: $application->selected_amount ?: 50000);
+            $appFee = self::calculateApplicableFee((string) $application->loan_type, $principal);
+            $application->fee_amount = $appFee;
+            $application->processing_fee = $appFee;
+        }
+
+        $application->upi_id = $application->payment_upi_id ?: SystemSetting::get('upi_id', 'flipflops@upi');
+        $application->upi_payee_name = SystemSetting::get('upi_payee_name', 'OpenScore Finance');
 
         return response()->json([
             'status' => 'success',
@@ -1730,8 +1932,8 @@ class LoanApplicationController extends Controller
                 ['amount' => 35000, 'fee' => 4000],
                 ['amount' => 45000, 'fee' => 4000],
             ],
-            'upi_id' => 'openscore@upi',
-            'merchant_name' => 'OpenScore Finance',
+            'upi_id' => SystemSetting::get('upi_id', 'flipflops@upi'),
+            'merchant_name' => SystemSetting::get('upi_payee_name', 'OpenScore Finance'),
             'qr_code_image' => '',
         ];
 
@@ -1755,6 +1957,16 @@ class LoanApplicationController extends Controller
         $current = \Illuminate\Support\Facades\Cache::get('virtual_loan_settings', []);
         if (!is_array($current)) $current = [];
 
+        $upiId = $request->input('upi_id', $current['upi_id'] ?? SystemSetting::get('upi_id', 'flipflops@upi'));
+        $payee = $request->input('merchant_name', $current['merchant_name'] ?? SystemSetting::get('upi_payee_name', 'OpenScore Finance'));
+
+        if ($request->has('upi_id') && !empty($request->upi_id)) {
+            SystemSetting::set('upi_id', trim($request->upi_id));
+        }
+        if ($request->has('merchant_name')) {
+            SystemSetting::set('upi_payee_name', trim($request->merchant_name));
+        }
+
         $settings = [
             'fee_label' => $request->input('fee_label', $current['fee_label'] ?? 'Loan Processing / Service Fee'),
             'fee_structure' => $request->input('fee_structure', $current['fee_structure'] ?? [
@@ -1764,8 +1976,8 @@ class LoanApplicationController extends Controller
                 ['amount' => 35000, 'fee' => 4000],
                 ['amount' => 45000, 'fee' => 4000],
             ]),
-            'upi_id' => $request->input('upi_id', $current['upi_id'] ?? 'openscore@upi'),
-            'merchant_name' => $request->input('merchant_name', $current['merchant_name'] ?? 'OpenScore Finance'),
+            'upi_id' => $upiId,
+            'merchant_name' => $payee,
             'qr_code_image' => $request->input('qr_code_image', $current['qr_code_image'] ?? ''),
         ];
 
@@ -1785,7 +1997,7 @@ class LoanApplicationController extends Controller
         $mobile = $request->input('mobile_number', $request->input('mobile', $request->input('phone')));
         $email = $request->input('email');
         $address = $request->input('address', '');
-        $processingFee = (float) $request->input('processing_fee', 3000);
+        $processingFee = (float) $request->input('processing_fee', self::calculateApplicableFee('virtual_loan', $amount));
 
         if (!$amount) {
             return response()->json([
@@ -1827,6 +2039,10 @@ class LoanApplicationController extends Controller
             $existing->required_amount = $amount;
             $existing->selected_amount = $amount;
             $existing->processing_fee = $processingFee;
+            $existing->fee_amount = $processingFee;
+            if (!$existing->payment_upi_id) {
+                $existing->payment_upi_id = SystemSetting::get('upi_id', 'flipflops@upi');
+            }
             $existing->full_name = $fullName;
             $existing->phone = $cleanMobile;
             $existing->mobile_number = $cleanMobile;
@@ -1855,6 +2071,8 @@ class LoanApplicationController extends Controller
         $loanApp->required_amount = $amount;
         $loanApp->selected_amount = $amount;
         $loanApp->processing_fee = $processingFee;
+        $loanApp->fee_amount = $processingFee;
+        $loanApp->payment_upi_id = SystemSetting::get('upi_id', 'flipflops@upi');
         $loanApp->full_name = $fullName;
         $loanApp->phone = $cleanMobile;
         $loanApp->mobile_number = $cleanMobile;
