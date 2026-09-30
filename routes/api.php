@@ -61,6 +61,10 @@ Route::get('/settings/cooldown', [LoanApplicationController::class, 'getCooldown
 Route::get('/admin/settings/otp', [AuthController::class, 'getOtpSettings']);
 Route::post('/admin/settings/otp', [AuthController::class, 'updateOtpSettings']);
 Route::get('/settings/otp', [AuthController::class, 'getOtpSettings']);
+Route::get('/admin/settings/fee-config', [LoanApplicationController::class, 'getFeeConfig']);
+Route::post('/admin/settings/fee-config', [LoanApplicationController::class, 'updateFeeConfig']);
+Route::get('/settings/fee-config', [LoanApplicationController::class, 'getFeeConfig']);
+
 
 // Loan Application Routes
 Route::get('/loan/applicant-profile', [LoanApplicationController::class, 'getApplicantProfile']);

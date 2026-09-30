@@ -49,6 +49,7 @@ class LoanApplication extends Model
         'processing_fee',
         'payment_status',
         'transaction_id',
+        'payment_screenshot',
         'partner_options',
         'selected_partner_id',
         'selected_partner_name',

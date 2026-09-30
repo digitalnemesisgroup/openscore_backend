@@ -423,6 +423,13 @@ class LoanApplicationController extends Controller
 
         $txId = $request->input('transaction_id', $request->input('utr', 'TXN' . rand(100000000, 999999999)));
         $loanApp->transaction_id = $txId;
+        if ($request->has('payment_screenshot') && !empty($request->input('payment_screenshot'))) {
+            $loanApp->payment_screenshot = $request->input('payment_screenshot');
+        } elseif ($request->hasFile('payment_screenshot')) {
+            $path = $request->file('payment_screenshot')->store('payment_receipts', 'public');
+            $loanApp->payment_screenshot = '/storage/' . $path;
+        }
+
         $loanApp->payment_status = 'pending_verification';
         $loanApp->fee_payment_status = 'pending_approval';
         $loanApp->status = 'fee_submitted_pending_verification';
@@ -963,11 +970,74 @@ class LoanApplicationController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Re-application cooldown window updated to ' . $days . ' days.',
+            'message' => "Re-application cooldown updated to {$days} days",
             'data' => [
                 'reapplication_cooldown_days' => $days,
             ],
         ]);
+    }
+
+    public function getFeeConfig()
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'upi_id' => SystemSetting::get('upi_id', 'flipflops@upi'),
+                'upi_payee_name' => SystemSetting::get('upi_payee_name', 'OpenScore Finance'),
+                'cash_loan_fee_type' => SystemSetting::get('cash_loan_fee_type', 'fixed'),
+                'cash_loan_fee_value' => (float) SystemSetting::get('cash_loan_fee_value', 999),
+                'cash_loan_good_cibil_fee_value' => (float) SystemSetting::get('cash_loan_good_cibil_fee_value', 499),
+                'construction_loan_fee_type' => SystemSetting::get('construction_loan_fee_type', 'fixed'),
+                'construction_loan_fee_value' => (float) SystemSetting::get('construction_loan_fee_value', 999),
+                'virtual_loan_fee_type' => SystemSetting::get('virtual_loan_fee_type', 'fixed'),
+                'virtual_loan_fee_value' => (float) SystemSetting::get('virtual_loan_fee_value', 299),
+            ],
+        ]);
+    }
+
+    public function updateFeeConfig(Request $request)
+    {
+        $request->validate([
+            'upi_id' => 'nullable|string',
+            'upi_payee_name' => 'nullable|string',
+            'cash_loan_fee_type' => 'nullable|string|in:fixed,percentage',
+            'cash_loan_fee_value' => 'nullable|numeric|min:0',
+            'cash_loan_good_cibil_fee_value' => 'nullable|numeric|min:0',
+            'construction_loan_fee_type' => 'nullable|string|in:fixed,percentage',
+            'construction_loan_fee_value' => 'nullable|numeric|min:0',
+            'virtual_loan_fee_type' => 'nullable|string|in:fixed,percentage',
+            'virtual_loan_fee_value' => 'nullable|numeric|min:0',
+        ]);
+
+        if ($request->has('upi_id') && !empty($request->upi_id)) {
+            SystemSetting::set('upi_id', trim($request->upi_id));
+        }
+        if ($request->has('upi_payee_name')) {
+            SystemSetting::set('upi_payee_name', trim($request->upi_payee_name));
+        }
+        if ($request->has('cash_loan_fee_type')) {
+            SystemSetting::set('cash_loan_fee_type', $request->cash_loan_fee_type);
+        }
+        if ($request->has('cash_loan_fee_value')) {
+            SystemSetting::set('cash_loan_fee_value', (float) $request->cash_loan_fee_value);
+        }
+        if ($request->has('cash_loan_good_cibil_fee_value')) {
+            SystemSetting::set('cash_loan_good_cibil_fee_value', (float) $request->cash_loan_good_cibil_fee_value);
+        }
+        if ($request->has('construction_loan_fee_type')) {
+            SystemSetting::set('construction_loan_fee_type', $request->construction_loan_fee_type);
+        }
+        if ($request->has('construction_loan_fee_value')) {
+            SystemSetting::set('construction_loan_fee_value', (float) $request->construction_loan_fee_value);
+        }
+        if ($request->has('virtual_loan_fee_type')) {
+            SystemSetting::set('virtual_loan_fee_type', $request->virtual_loan_fee_type);
+        }
+        if ($request->has('virtual_loan_fee_value')) {
+            SystemSetting::set('virtual_loan_fee_value', (float) $request->virtual_loan_fee_value);
+        }
+
+        return $this->getFeeConfig();
     }
 
     public function adminApproveDisbursement(Request $request, $id)
