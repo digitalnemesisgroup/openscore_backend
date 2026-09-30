@@ -1,26 +1,26 @@
 <?php
-require __DIR__.'/vendor/autoload.php';
-$app = require_once __DIR__.'/bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-$kernel->bootstrap();
-
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+$dbHost = '127.0.0.1';
+$dbName = 'u910898544_msmeloan2026';
+$dbUser = 'u910898544_msmeloan_user';
+$dbPass = 'Msmeloan@2026';
 
 try {
-    Schema::disableForeignKeyConstraints();
+    $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4", $dbUser, $dbPass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    ]);
     
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
     $tables = ['loan_applications', 'applicant_profiles', 'disbursement_details', 'partner_submissions'];
     foreach ($tables as $table) {
-        if (Schema::hasTable($table)) {
-            DB::table($table)->truncate();
+        try {
+            $pdo->exec("TRUNCATE TABLE `$table`;");
             echo "Truncated table: $table\n";
+        } catch (\Exception $ex) {
+            // Table may not exist or already empty
         }
     }
-    
-    Schema::enableForeignKeyConstraints();
-    
-    echo "✓ All loan applications and profiles have been safely cleared from database.\n";
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
+    echo "✓ All loan applications and applicant records cleared from database.\n";
 } catch (\Exception $e) {
-    echo "Error clearing loans: " . $e->getMessage() . "\n";
+    echo "Database error: " . $e->getMessage() . "\n";
 }

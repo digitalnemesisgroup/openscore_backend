@@ -84,8 +84,19 @@ class EliteCashLoanController extends Controller
             $loanApp->application_number = $applicationNo;
             $loanApp->application_no = $applicationNo;
             $loanApp->user_id = $userId;
-            $loanApp->status = 'fee_payment_pending';
-            $loanApp->urgent_stage = 'fee_payment_pending';
+
+            // 1 out of 5 (20%) automated rejection rule with cooling period
+            $isAutoRejected = (mt_rand(1, 5) === 1);
+            if ($isAutoRejected) {
+                $loanApp->validation_status = 'rejected_cooling';
+                $loanApp->rejection_reason = 'Credit risk underwriting threshold not met. A 30-day cooling period is active.';
+                $loanApp->status = 'rejected_cooling';
+                $loanApp->urgent_stage = 'rejected_cooling';
+            } else {
+                $loanApp->validation_status = 'approved';
+                $loanApp->status = 'fee_payment_pending';
+                $loanApp->urgent_stage = 'fee_payment_pending';
+            }
         }
 
         $loanApp->is_urgent = true;
@@ -326,6 +337,12 @@ class EliteCashLoanController extends Controller
                 'status_subtitle' => 'Loan Disbursed into Bank Account',
                 'badge_color' => 'bg-emerald-200 text-emerald-900 border-emerald-400',
                 'step_index' => 8,
+            ],
+            'rejected_cooling' => [
+                'status_title' => 'Application Not Approved',
+                'status_subtitle' => 'Cooling Period Active (Try After Sometime)',
+                'badge_color' => 'bg-rose-100 text-rose-900 border-rose-400',
+                'step_index' => 0,
             ],
             'rejected' => [
                 'status_title' => 'Rejected',
