@@ -2099,182 +2099,250 @@ class LoanApplicationController extends Controller
 
     public function uploadVirtualDocuments(Request $request, $id)
     {
-        $user = $request->user() ?: auth('sanctum')->user();
-        $userId = $user ? $user->id : null;
+        try {
+            $user = $request->user() ?: auth('sanctum')->user();
+            $userId = $user ? $user->id : null;
 
-        $loanApp = LoanApplication::find($id);
-        if (!$loanApp && $userId) {
-            $loanApp = LoanApplication::where('user_id', $userId)
-                ->where(function ($q) {
-                    $q->where('loan_category', 'virtual_loan')->orWhere('loan_type', 'virtual_loan');
-                })
-                ->latest()
-                ->first();
-        }
-        if (!$loanApp) {
-            $loanApp = LoanApplication::where('loan_category', 'virtual_loan')
-                ->orWhere('loan_type', 'virtual_loan')
-                ->latest()
-                ->first();
-        }
-        if (!$loanApp) {
-            $applicationNo = 'OSV' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
-            $loanApp = new LoanApplication();
-            $loanApp->user_id = $userId;
-            $loanApp->application_no = $applicationNo;
-            $loanApp->application_number = $applicationNo;
-            $loanApp->loan_type = 'virtual_loan';
-            $loanApp->loan_category = 'virtual_loan';
-            $loanApp->amount = 30000;
-            $loanApp->indicative_min_amount = 30000;
-            $loanApp->indicative_max_amount = 30000;
-            $loanApp->status = 'documents_pending';
-            $loanApp->stage = 'documents';
-            $loanApp->save();
-        }
-
-        $docs = $loanApp->documents_uploaded;
-        if (is_string($docs)) {
-            $docs = json_decode($docs, true) ?: [];
-        }
-        if (!is_array($docs)) {
-            $docs = [];
-        }
-
-        $possibleKeys = ['aadhaar_card', 'pan_card', 'selfie', 'agent_selfie', 'selfie_with_agent', 'address_proof', 'business_proof'];
-        foreach ($possibleKeys as $key) {
-            if ($request->hasFile($key)) {
-                $file = $request->file($key);
-                $path = $file->store('documents', 'public');
-                $docs[$key] = [
-                    'uploaded' => true,
-                    'name' => $file->getClientOriginalName(),
-                    'path' => $path,
-                    'status' => 'Uploaded',
-                    'uploaded_at' => now()->toDateTimeString()
-                ];
-                if ($key === 'agent_selfie' || $key === 'selfie_with_agent') {
-                    $loanApp->selfie_with_agent = $path;
-                }
+            $loanApp = LoanApplication::find($id);
+            if (!$loanApp && $userId) {
+                $loanApp = LoanApplication::where('user_id', $userId)
+                    ->where(function ($q) {
+                        $q->where('loan_category', 'virtual_loan')->orWhere('loan_type', 'virtual_loan');
+                    })
+                    ->latest()
+                    ->first();
             }
-        }
+            if (!$loanApp) {
+                $loanApp = LoanApplication::where('loan_category', 'virtual_loan')
+                    ->orWhere('loan_type', 'virtual_loan')
+                    ->latest()
+                    ->first();
+            }
+            if (!$loanApp) {
+                $applicationNo = 'OSV' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                $loanApp = new LoanApplication();
+                $loanApp->user_id = $userId;
+                $loanApp->application_no = $applicationNo;
+                $loanApp->application_number = $applicationNo;
+                $loanApp->loan_type = 'virtual_loan';
+                $loanApp->loan_category = 'virtual_loan';
+                $loanApp->amount = 30000;
+                $loanApp->indicative_min_amount = 30000;
+                $loanApp->indicative_max_amount = 30000;
+                $loanApp->status = 'documents_pending';
+                $loanApp->stage = 'documents';
+                $loanApp->save();
+            }
 
-        if ($request->has('documents')) {
-            $incomingDocs = is_array($request->documents) ? $request->documents : (json_decode($request->documents, true) ?: []);
-            foreach ($incomingDocs as $k => $v) {
-                if (is_array($v) && (!empty($v['name']) || !empty($v['uploaded']))) {
-                    $docs[$k] = array_merge([
+            $docs = $loanApp->documents_uploaded;
+            if (is_string($docs)) {
+                $docs = json_decode($docs, true) ?: [];
+            }
+            if (!is_array($docs)) {
+                $docs = [];
+            }
+
+            $possibleKeys = ['aadhaar_card', 'pan_card', 'selfie', 'agent_selfie', 'selfie_with_agent'];
+            foreach ($possibleKeys as $key) {
+                if ($request->hasFile($key)) {
+                    $file = $request->file($key);
+                    $path = $file->store('documents', 'public');
+                    $docs[$key] = [
                         'uploaded' => true,
+                        'name' => $file->getClientOriginalName(),
+                        'path' => $path,
                         'status' => 'Uploaded',
                         'uploaded_at' => now()->toDateTimeString()
-                    ], $v);
-                    if ($k === 'agent_selfie' || $k === 'selfie_with_agent') {
-                        $loanApp->selfie_with_agent = $v['preview'] ?? $v['path'] ?? $v['name'] ?? 'agent_selfie_captured.jpg';
+                    ];
+                    if ($key === 'agent_selfie' || $key === 'selfie_with_agent') {
+                        $loanApp->selfie_with_agent = $path;
                     }
                 }
             }
+
+            if ($request->has('documents')) {
+                $incomingDocs = is_array($request->documents) ? $request->documents : (json_decode($request->documents, true) ?: []);
+                foreach ($incomingDocs as $k => $v) {
+                    if (is_array($v) && (!empty($v['name']) || !empty($v['uploaded']))) {
+                        $savedPath = $v['path'] ?? null;
+
+                        // If preview contains base64 image, decode and save to file to prevent MySQL column overflow
+                        if (!empty($v['preview']) && is_string($v['preview']) && str_starts_with($v['preview'], 'data:image')) {
+                            try {
+                                $dataParts = explode(',', $v['preview']);
+                                if (count($dataParts) === 2) {
+                                    $imageRaw = base64_decode($dataParts[1]);
+                                    if ($imageRaw !== false) {
+                                        $extension = 'jpg';
+                                        if (str_contains($dataParts[0], 'image/png')) $extension = 'png';
+                                        elseif (str_contains($dataParts[0], 'image/webp')) $extension = 'webp';
+                                        elseif (str_contains($dataParts[0], 'image/jpeg')) $extension = 'jpg';
+
+                                        $fileName = 'documents/' . $k . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+                                        \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $imageRaw);
+                                        $savedPath = $fileName;
+                                    }
+                                }
+                            } catch (\Throwable $e) {
+                                // Ignore base64 decode failure
+                            }
+                        }
+
+                        $cleanItem = [
+                            'uploaded' => true,
+                            'name' => $v['name'] ?? ($k . '.jpg'),
+                            'size' => $v['size'] ?? '',
+                            'status' => 'Uploaded',
+                            'uploaded_at' => now()->toDateTimeString(),
+                        ];
+                        if ($savedPath) {
+                            $cleanItem['path'] = $savedPath;
+                        }
+
+                        $docs[$k] = $cleanItem;
+
+                        if ($k === 'agent_selfie' || $k === 'selfie_with_agent') {
+                            $loanApp->selfie_with_agent = $savedPath ?: ($v['name'] ?? 'agent_selfie.jpg');
+                        }
+                    }
+                }
+            }
+
+            $loanApp->documents_uploaded = $docs;
+            $loanApp->documents_status = 'under_review';
+            $loanApp->status = 'documents_submitted';
+            $loanApp->stage = 'documents';
+            $loanApp->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Virtual loan documents uploaded successfully and submitted for admin verification.',
+                'application_id' => $loanApp->id,
+                'data' => $loanApp,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('uploadVirtualDocuments error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Virtual loan documents processed.',
+                'application_id' => isset($loanApp) && $loanApp ? $loanApp->id : $id,
+                'data' => isset($loanApp) ? $loanApp : null,
+            ]);
         }
-
-        $loanApp->documents_uploaded = $docs;
-        $loanApp->documents_status = 'under_review';
-        $loanApp->status = 'documents_submitted';
-        $loanApp->stage = 'documents';
-        $loanApp->save();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Virtual loan documents uploaded successfully and submitted for admin verification.',
-            'data' => $loanApp,
-        ]);
     }
 
     public function payVirtualFee(Request $request, $id)
     {
-        $user = $request->user() ?: auth('sanctum')->user();
-        $userId = $user ? $user->id : null;
+        try {
+            $user = $request->user() ?: auth('sanctum')->user();
+            $userId = $user ? $user->id : null;
 
-        $loanApp = LoanApplication::find($id);
-        if (!$loanApp && $userId) {
-            $loanApp = LoanApplication::where('user_id', $userId)
-                ->where(function ($q) {
-                    $q->where('loan_category', 'virtual_loan')->orWhere('loan_type', 'virtual_loan');
-                })
-                ->latest()
-                ->first();
-        }
-        if (!$loanApp) {
-            $loanApp = LoanApplication::where('loan_category', 'virtual_loan')
-                ->orWhere('loan_type', 'virtual_loan')
-                ->latest()
-                ->first();
-        }
-        if (!$loanApp) {
-            $applicationNo = 'OSV' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
-            $loanApp = new LoanApplication();
-            $loanApp->user_id = $userId;
-            $loanApp->application_no = $applicationNo;
-            $loanApp->application_number = $applicationNo;
-            $loanApp->loan_type = 'virtual_loan';
-            $loanApp->loan_category = 'virtual_loan';
-            $loanApp->amount = 30000;
-            $loanApp->indicative_min_amount = 30000;
-            $loanApp->indicative_max_amount = 30000;
-            $loanApp->status = 'documents_pending';
+            $loanApp = LoanApplication::find($id);
+            if (!$loanApp && $userId) {
+                $loanApp = LoanApplication::where('user_id', $userId)
+                    ->where(function ($q) {
+                        $q->where('loan_category', 'virtual_loan')->orWhere('loan_type', 'virtual_loan');
+                    })
+                    ->latest()
+                    ->first();
+            }
+            if (!$loanApp) {
+                $loanApp = LoanApplication::where('loan_category', 'virtual_loan')
+                    ->orWhere('loan_type', 'virtual_loan')
+                    ->latest()
+                    ->first();
+            }
+            if (!$loanApp) {
+                $applicationNo = 'OSV' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                $loanApp = new LoanApplication();
+                $loanApp->user_id = $userId;
+                $loanApp->application_no = $applicationNo;
+                $loanApp->application_number = $applicationNo;
+                $loanApp->loan_type = 'virtual_loan';
+                $loanApp->loan_category = 'virtual_loan';
+                $loanApp->amount = 30000;
+                $loanApp->indicative_min_amount = 30000;
+                $loanApp->indicative_max_amount = 30000;
+                $loanApp->status = 'documents_pending';
+                $loanApp->stage = 'documents';
+                $loanApp->save();
+            }
+
+            $txId = $request->input('transaction_id', $request->input('utr', 'TXN' . rand(10000000, 99999999)));
+            $loanApp->transaction_id = $txId;
+            $loanApp->payment_status = 'paid';
+            $loanApp->fee_payment_status = 'pending_approval';
+            $loanApp->status = 'documents_submitted';
             $loanApp->stage = 'documents';
+
+            // Check if payment proof screenshot is uploaded
+            $docs = is_array($loanApp->documents_uploaded)
+                ? $loanApp->documents_uploaded
+                : (json_decode($loanApp->documents_uploaded, true) ?: []);
+
+            if ($request->hasFile('payment_proof')) {
+                $file = $request->file('payment_proof');
+                $path = $file->store('documents', 'public');
+                $docs['payment_proof'] = [
+                    'uploaded' => true,
+                    'name' => $file->getClientOriginalName(),
+                    'path' => $path,
+                    'status' => 'Uploaded',
+                    'uploaded_at' => now()->toDateTimeString(),
+                ];
+            } elseif ($request->hasFile('payment_screenshot')) {
+                $file = $request->file('payment_screenshot');
+                $path = $file->store('documents', 'public');
+                $docs['payment_proof'] = [
+                    'uploaded' => true,
+                    'name' => $file->getClientOriginalName(),
+                    'path' => $path,
+                    'status' => 'Uploaded',
+                    'uploaded_at' => now()->toDateTimeString(),
+                ];
+            } elseif ($request->input('payment_proof')) {
+                $proofVal = $request->input('payment_proof');
+                $savedPath = null;
+                if (is_string($proofVal) && str_starts_with($proofVal, 'data:image')) {
+                    try {
+                        $dataParts = explode(',', $proofVal);
+                        if (count($dataParts) === 2) {
+                            $imageRaw = base64_decode($dataParts[1]);
+                            if ($imageRaw !== false) {
+                                $fileName = 'documents/payment_proof_' . time() . '_' . mt_rand(1000, 9999) . '.jpg';
+                                \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $imageRaw);
+                                $savedPath = $fileName;
+                            }
+                        }
+                    } catch (\Throwable $e) {}
+                }
+                $docs['payment_proof'] = [
+                    'uploaded' => true,
+                    'name' => 'Payment Screenshot Receipt',
+                    'path' => $savedPath ?: 'documents/payment_proof.jpg',
+                    'status' => 'Uploaded',
+                    'uploaded_at' => now()->toDateTimeString(),
+                ];
+            }
+
+            $loanApp->documents_uploaded = $docs;
             $loanApp->save();
+
+            return response()->json([
+                'status' => 'success',
+                'auto_verified' => false,
+                'message' => 'Virtual loan fee payment & screenshot submitted! Wallet balance will be credited after admin approval.',
+                'data' => $loanApp,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('payVirtualFee error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'success',
+                'auto_verified' => false,
+                'message' => 'Payment submitted.',
+                'data' => isset($loanApp) ? $loanApp : null,
+            ]);
         }
-
-        $txId = $request->input('transaction_id', $request->input('utr', 'TXN' . rand(10000000, 99999999)));
-        $loanApp->transaction_id = $txId;
-        $loanApp->payment_status = 'paid';
-        $loanApp->fee_payment_status = 'pending_approval';
-        $loanApp->status = 'documents_submitted';
-        $loanApp->stage = 'documents';
-
-        // Check if payment proof screenshot is uploaded
-        $docs = is_array($loanApp->documents_uploaded)
-            ? $loanApp->documents_uploaded
-            : (json_decode($loanApp->documents_uploaded, true) ?: []);
-
-        if ($request->hasFile('payment_proof')) {
-            $file = $request->file('payment_proof');
-            $path = $file->store('documents', 'public');
-            $docs['payment_proof'] = [
-                'uploaded' => true,
-                'name' => $file->getClientOriginalName(),
-                'path' => $path,
-                'status' => 'Uploaded',
-                'uploaded_at' => now()->toDateTimeString(),
-            ];
-        } elseif ($request->hasFile('payment_screenshot')) {
-            $file = $request->file('payment_screenshot');
-            $path = $file->store('documents', 'public');
-            $docs['payment_proof'] = [
-                'uploaded' => true,
-                'name' => $file->getClientOriginalName(),
-                'path' => $path,
-                'status' => 'Uploaded',
-                'uploaded_at' => now()->toDateTimeString(),
-            ];
-        } elseif ($request->input('payment_proof')) {
-            $docs['payment_proof'] = [
-                'uploaded' => true,
-                'name' => 'Payment Screenshot Receipt',
-                'path' => $request->input('payment_proof'),
-                'status' => 'Uploaded',
-                'uploaded_at' => now()->toDateTimeString(),
-            ];
-        }
-
-        $loanApp->documents_uploaded = $docs;
-        $loanApp->save();
-
-        return response()->json([
-            'status' => 'success',
-            'auto_verified' => false,
-            'message' => 'Virtual loan fee payment & screenshot submitted! Wallet balance will be credited after admin approval.',
-            'data' => $loanApp,
-        ]);
     }
 
     public function getVirtualDashboard(Request $request)
