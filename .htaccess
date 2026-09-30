@@ -1,0 +1,29 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Dynamic CORS Headers matching requesting Origin (supports credentialed requests)
+    SetEnvIfNoCase Origin ".*" HTTP_ORIGIN=$0
+    
+    <IfModule mod_headers.c>
+        Header always set Access-Control-Allow-Origin "%{HTTP_ORIGIN}e" env=HTTP_ORIGIN
+        Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        Header always set Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With, Accept, Origin, X-XSRF-TOKEN"
+        Header always set Access-Control-Allow-Credentials "true"
+    </IfModule>
+
+    # Handle OPTIONS preflight requests directly in Apache
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ - [R=200,L]
+
+    # Pass Authorization and Content-Type Headers to PHP
+    SetEnvIfAuthorization "(.*)" HTTP_AUTHORIZATION=$1
+    SetEnvIf Content-Type "(.*)" HTTP_CONTENT_TYPE=$1
+
+    # Allow direct access to setup.php and static files
+    RewriteCond %{REQUEST_URI} ^/setup\.php [NC]
+    RewriteRule ^ - [L]
+
+    # Handle Front Controller for Hostinger Shared Hosting Root Deployment...
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

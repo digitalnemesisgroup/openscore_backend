@@ -1,0 +1,107 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class LoanApplication extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'application_number',
+        'application_no',
+        'user_id',
+        'loan_type',
+        'loan_category',
+        'amount',
+        'phone',
+        'stage',
+        'consent_accepted',
+        'full_name',
+        'dob',
+        'mobile_number',
+        'email',
+        'pan_number',
+        'aadhaar_number',
+        'gender',
+        'address',
+        'city',
+        'state',
+        'pin_code',
+        'employment_type',
+        'company_name',
+        'monthly_income',
+        'existing_emi',
+        'work_experience',
+        'required_amount',
+        'loan_purpose',
+        'selected_amount',
+        'selected_tenure',
+        'indicative_min_amount',
+        'indicative_max_amount',
+        'indicative_interest_rate',
+        'estimated_emi',
+        'total_repayment',
+        'total_interest',
+        'documents_uploaded',
+        'processing_fee',
+        'payment_status',
+        'transaction_id',
+        'partner_options',
+        'selected_partner_id',
+        'selected_partner_name',
+        'partner_locked',
+        'lender_status',
+        'lender_charge',
+        'bank_application_no',
+        'proof_screenshot',
+        'bank_portal_status',
+        'proof_remarks',
+        'selfie_with_agent',
+        'final_decision',
+        'approved_amount',
+        'rejection_reason',
+        'additional_docs_request',
+        'additional_docs_submitted',
+        'bank_account_holder_name',
+        'bank_name',
+        'bank_account_number',
+        'bank_ifsc_code',
+        'bank_account_type',
+        'disbursement_status',
+        'disbursement_reference_no',
+        'disbursed_at',
+        'reapply_locked_until',
+        'verification_timer_seconds',
+        'status',
+        'fee_payment_status',
+        'fee_payment_approved_at',
+        'proof_status',
+        'proof_approved_at',
+        'bank_details_status',
+        'bank_details_approved_at',
+        'documents_status',
+        'documents_approved_at',
+    ];
+
+    protected $casts = [
+        'consent_accepted' => 'boolean',
+        'partner_locked' => 'boolean',
+        'documents_uploaded' => 'array',
+        'partner_options' => 'array',
+        'additional_docs_submitted' => 'array',
+        'disbursed_at' => 'datetime',
+        'reapply_locked_until' => 'datetime',
+        'fee_payment_approved_at' => 'datetime',
+        'proof_approved_at' => 'datetime',
+        'bank_details_approved_at' => 'datetime',
+        'documents_approved_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
