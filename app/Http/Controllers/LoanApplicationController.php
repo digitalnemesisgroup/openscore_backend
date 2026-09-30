@@ -1481,10 +1481,26 @@ class LoanApplicationController extends Controller
             $loanApp->lender_status = 'lender_process_completed';
         } else if ($stage === 'disbursed') {
             $loanApp->final_decision = 'APPROVED';
+            $loanApp->fee_payment_status = 'approved';
             $loanApp->disbursement_status = 'credited';
             $loanApp->disbursement_reference_no = 'HDFCLN' . rand(100000000, 999999999);
             $loanApp->disbursed_at = now();
             $loanApp->status = 'disbursed';
+
+            // Unlock Wallet Card for the applicant
+            try {
+                $walletMob = preg_replace('/[^0-9]/', '', $loanApp->mobile_number);
+                $wallet = \App\Models\UserWalletCard::where(function($q) use ($loanApp, $walletMob) {
+                    if ($loanApp->user_id) $q->where('user_id', $loanApp->user_id);
+                    if ($walletMob) $q->orWhere('mobile', $walletMob);
+                })->first();
+
+                if ($wallet) {
+                    $wallet->verifying_status = 'ACTIVE';
+                    $wallet->settlement_status = 'ACTIVE & UNLOCKED';
+                    $wallet->save();
+                }
+            } catch (\Throwable $e) {}
         }
 
         $loanApp->save();
@@ -2328,10 +2344,46 @@ class LoanApplicationController extends Controller
             $loanApp->documents_uploaded = $docs;
             $loanApp->save();
 
+            // Auto-provision or update UserWalletCard with approved amount in locked state
+            try {
+                $user = $request->user() ?: auth('sanctum')->user();
+                $walletMob = preg_replace('/[^0-9]/', '', $loanApp->mobile_number);
+                $approvedAmt = (float) ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount ?: 30000);
+
+                $wallet = \App\Models\UserWalletCard::where(function($q) use ($user, $walletMob) {
+                    if ($user) $q->where('user_id', $user->id);
+                    if ($walletMob) $q->orWhere('mobile', $walletMob);
+                })->first();
+
+                if (!$wallet) {
+                    \App\Models\UserWalletCard::create([
+                        'user_id' => $user ? $user->id : $loanApp->user_id,
+                        'mobile' => $walletMob,
+                        'card_number' => '4734 8912 ' . rand(1000, 9999) . ' ' . substr($walletMob ?: '4734', -4),
+                        'card_holder_name' => strtoupper($loanApp->full_name ?: ($user ? $user->name : 'OPENSCORE USER')),
+                        'valid_thru' => '08/29',
+                        'available_value' => $approvedAmt,
+                        'incremental_value' => 0.00,
+                        'daily_increment' => '+0.00',
+                        'verifying_status' => 'PENDING_ADMIN_APPROVAL',
+                        'card_type' => 'PREMIUM METAL CARD',
+                        'bank_name' => $loanApp->bank_name ?: 'HDFC Bank',
+                        'bank_account_number' => $loanApp->bank_account_number ?: ('•••• •••• •••• ' . substr($walletMob ?: '9123', -4)),
+                        'bank_reference_no' => 'OSV' . rand(10000000, 99999999),
+                        'settlement_status' => 'LOCKED (PENDING ADMIN APPROVAL)',
+                    ]);
+                } else {
+                    $wallet->available_value = $approvedAmt;
+                    $wallet->verifying_status = 'PENDING_ADMIN_APPROVAL';
+                    $wallet->settlement_status = 'LOCKED (PENDING ADMIN APPROVAL)';
+                    $wallet->save();
+                }
+            } catch (\Throwable $e) {}
+
             return response()->json([
                 'status' => 'success',
                 'auto_verified' => false,
-                'message' => 'Virtual loan fee payment & screenshot submitted! Wallet balance will be credited after admin approval.',
+                'message' => 'Virtual loan fee payment & screenshot submitted! Credit limit of ₹' . number_format($approvedAmt ?? 30000) . ' has been credited into your wallet (locked pending admin approval).',
                 'data' => $loanApp,
             ]);
         } catch (\Throwable $e) {
@@ -2384,13 +2436,13 @@ class LoanApplicationController extends Controller
         $approvedAmount = (float) ($loanApp ? ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount ?: $loanApp->amount ?: 30000) : 30000);
         $userName = ($user && !empty($user->name)) ? $user->name : ($loanApp && !empty($loanApp->full_name) ? $loanApp->full_name : 'Rahul');
 
-        $isDisbursed = $loanApp && ($loanApp->status === 'disbursed' || $loanApp->fee_payment_status === 'approved' || ($wallet && $wallet->available_value > 0));
-        $isPendingApproval = $loanApp && ($loanApp->payment_status === 'paid' && $loanApp->fee_payment_status !== 'approved');
+        $isDisbursed = $loanApp && ($loanApp->status === 'disbursed' || $loanApp->fee_payment_status === 'approved' || $loanApp->final_decision === 'APPROVED');
+        $isPendingApproval = $loanApp && ($loanApp->payment_status === 'paid' && !$isDisbursed);
 
-        $availableAmount = ($wallet && $isDisbursed) ? (float) $wallet->available_value : ($isDisbursed ? $approvedAmount : 0);
+        $availableAmount = ($wallet && $wallet->available_value > 0) ? (float) $wallet->available_value : $approvedAmount;
         $usedAmount = max(0, $approvedAmount - $availableAmount);
         $todaysRepayment = ($isDisbursed && $usedAmount > 0) ? min(1000, $usedAmount) : 0;
-        $nextDueDate = $isDisbursed ? now()->addDays(30)->format('d M Y') : 'Pending Admin Review';
+        $nextDueDate = $isDisbursed ? now()->addDays(30)->format('d M Y') : 'Pending Admin Approval';
 
         // Parse docs
         $docsList = [];
@@ -2447,7 +2499,7 @@ class LoanApplicationController extends Controller
             }
         }
 
-        if (empty($transactions) && $isDisbursed) {
+        if (empty($transactions)) {
             $transactions = [
                 [
                     'id' => 'VLTX' . rand(100000, 999999),
@@ -2470,8 +2522,10 @@ class LoanApplicationController extends Controller
                 'todays_repayment' => $todaysRepayment,
                 'next_due_date' => $nextDueDate,
                 'is_active' => $isDisbursed,
+                'is_locked' => !$isDisbursed,
                 'is_pending_approval' => $isPendingApproval,
-                'loan_status' => $isDisbursed ? 'Active & Usable' : ($isPendingApproval ? 'Under Admin Review' : 'Pending Fee Payment'),
+                'loan_status' => $isDisbursed ? 'Active & Usable' : 'Amount Credited & Locked (Pending Admin Approval)',
+                'lock_reason' => !$isDisbursed ? 'Your limit is credited in your wallet. Transfers and QR payments are locked until Admin Approval is completed.' : null,
                 'interest_rate' => '0% for 30 Days (Interest-Free)',
                 'fee_payment_status' => $loanApp ? $loanApp->fee_payment_status : 'unpaid',
                 'documents' => $docsList,

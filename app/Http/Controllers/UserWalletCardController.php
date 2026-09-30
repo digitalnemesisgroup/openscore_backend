@@ -77,9 +77,9 @@ class UserWalletCardController extends Controller
             }
 
             if ($loanApp) {
-                if ($loanApp->approved_amount || $loanApp->selected_amount) {
-                    $appAmount = (float) ($loanApp->approved_amount ?: $loanApp->selected_amount);
-                    if ($card->available_value == 200000.00 && $appAmount > 0) {
+                if ($loanApp->approved_amount || $loanApp->selected_amount || $loanApp->required_amount) {
+                    $appAmount = (float) ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount);
+                    if ($appAmount > 0 && ($card->available_value == 0 || $card->available_value == 200000.00)) {
                         $card->available_value = $appAmount;
                         $updated = true;
                     }
@@ -103,9 +103,19 @@ class UserWalletCardController extends Controller
             }
         }
 
+        $isDisbursed = $loanApp && ($loanApp->status === 'disbursed' || $loanApp->fee_payment_status === 'approved' || $loanApp->final_decision === 'APPROVED');
+        $isPendingAdmin = ($loanApp && !$isDisbursed) || ($card->verifying_status === 'PENDING_ADMIN_APPROVAL');
+
+        $cardData = $card->toArray();
+        $cardData['is_locked'] = $isPendingAdmin;
+        $cardData['is_admin_approved'] = $isDisbursed;
+        $cardData['lock_reason'] = $isPendingAdmin 
+            ? 'Virtual credit is credited and reserved in your wallet, but transfers and QR payments are locked until Admin Approval is completed.'
+            : null;
+
         return response()->json([
             'status' => 'success',
-            'data' => $card,
+            'data' => $cardData,
         ]);
     }
 
@@ -430,6 +440,26 @@ class UserWalletCardController extends Controller
             ], 422);
         }
 
+        // Check active loan application approval status for sender
+        $senderLoanApp = null;
+        if ($user) {
+            $senderLoanApp = LoanApplication::where('user_id', $user->id)->latest()->first();
+        }
+        if (!$senderLoanApp && $cleanSenderMobile) {
+            $senderLoanApp = LoanApplication::where('mobile_number', $cleanSenderMobile)->latest()->first();
+        }
+
+        $isDisbursed = $senderLoanApp && ($senderLoanApp->status === 'disbursed' || $senderLoanApp->fee_payment_status === 'approved' || $senderLoanApp->final_decision === 'APPROVED');
+        $isPendingAdmin = ($senderLoanApp && !$isDisbursed) || ($senderCard->verifying_status === 'PENDING_ADMIN_APPROVAL');
+
+        if ($isPendingAdmin) {
+            return response()->json([
+                'status' => 'error',
+                'is_locked' => true,
+                'message' => 'Wallet Transfers Locked: Your credit limit of ₹' . number_format($senderCard->available_value, 2) . ' is credited into your wallet, but transfers and QR payments are locked until Admin Approval is completed.',
+            ], 403);
+        }
+
         $payAmount = (float) $request->amount;
 
         // 2. DB TRANSACTION & PESSIMISTIC LOCKING: Atomic Double-Click Safe Payment
@@ -530,6 +560,26 @@ class UserWalletCardController extends Controller
                 'status' => 'error',
                 'message' => 'No wallet card record found for this user account.',
             ], 404);
+        }
+
+        // Check active loan application approval status
+        $loanApp = null;
+        if ($user) {
+            $loanApp = LoanApplication::where('user_id', $user->id)->latest()->first();
+        }
+        if (!$loanApp && $cleanMobile) {
+            $loanApp = LoanApplication::where('mobile_number', $cleanMobile)->latest()->first();
+        }
+
+        $isDisbursed = $loanApp && ($loanApp->status === 'disbursed' || $loanApp->fee_payment_status === 'approved' || $loanApp->final_decision === 'APPROVED');
+        $isPendingAdmin = ($loanApp && !$isDisbursed) || ($card->verifying_status === 'PENDING_ADMIN_APPROVAL');
+
+        if ($isPendingAdmin) {
+            return response()->json([
+                'status' => 'error',
+                'is_locked' => true,
+                'message' => 'Bank Settlement Locked: Your credit limit of ₹' . number_format($card->available_value, 2) . ' is credited into your wallet, but withdrawals to bank are restricted until Admin Approval is completed.',
+            ], 403);
         }
 
         $transferAmt = (float) $request->amount;
