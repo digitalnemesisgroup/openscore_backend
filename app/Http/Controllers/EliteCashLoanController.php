@@ -15,177 +15,223 @@ class EliteCashLoanController extends Controller
      */
     public function apply(Request $request)
     {
-        $validated = $request->validate([
-            // 1. Loan Details
-            'required_amount' => 'required|numeric|min:5000',
-            'loan_purpose' => 'nullable|string',
+        try {
+            $validated = $request->validate([
+                // 1. Loan Details
+                'required_amount' => 'required|numeric|min:5000',
+                'loan_purpose' => 'nullable|string',
 
-            // 2. Applicant Details
-            'full_name' => 'required|string|max:255',
-            'dob' => 'required|string',
-            'gender' => 'required|string',
-            'mobile_number' => 'required|string',
-            'email' => 'required|email',
-            'pan_number' => 'required|string',
-            'aadhaar_number' => 'required|string',
-            'address' => 'nullable|string',
-            'city' => 'nullable|string',
-            'state' => 'nullable|string',
-            'pin_code' => 'nullable|string',
+                // 2. Applicant Details
+                'full_name' => 'required|string|max:255',
+                'dob' => 'required|string',
+                'gender' => 'required|string',
+                'mobile_number' => 'required|string',
+                'email' => 'required|email',
+                'pan_number' => 'required|string',
+                'aadhaar_number' => 'required|string',
+                'address' => 'nullable|string',
+                'city' => 'nullable|string',
+                'state' => 'nullable|string',
+                'pin_code' => 'nullable|string',
 
-            // 3. Income Details
-            'employment_type' => 'required|string',
-            'company_name' => 'nullable|string',
-            'monthly_income' => 'required|numeric|min:1000',
-            'existing_emi' => 'nullable|numeric',
-            'work_experience' => 'nullable|string',
+                // 3. Income Details
+                'employment_type' => 'required|string',
+                'company_name' => 'nullable|string',
+                'monthly_income' => 'required|numeric|min:1000',
+                'existing_emi' => 'nullable|numeric',
+                'work_experience' => 'nullable|string',
 
-            // 4. Simple Document Uploads (JSON or Array)
-            'documents_uploaded' => 'nullable',
+                // 4. Simple Document Uploads (JSON or Array)
+                'documents_uploaded' => 'nullable',
 
-            // 5. Bank Details
-            'bank_account_holder_name' => 'required|string',
-            'bank_name' => 'required|string',
-            'bank_account_number' => 'required|string',
-            'bank_ifsc_code' => 'required|string',
-            'bank_account_type' => 'nullable|string',
-        ]);
+                // 5. Bank Details
+                'bank_account_holder_name' => 'required|string',
+                'bank_name' => 'required|string',
+                'bank_account_number' => 'required|string',
+                'bank_ifsc_code' => 'required|string',
+                'bank_account_type' => 'nullable|string',
+            ]);
 
-        $userId = $request->user() ? $request->user()->id : null;
-        $cleanMobile = preg_replace('/[^0-9]/', '', $validated['mobile_number']);
-        $loanAmount = (float) $validated['required_amount'];
+            $userId = $request->user() ? $request->user()->id : null;
+            $cleanMobile = preg_replace('/[^0-9]/', '', $validated['mobile_number']);
+            $loanAmount = (float) $validated['required_amount'];
 
-        // Calculate dynamic processing fee for Elite Cash Loan
-        $loginFee = (float) SystemSetting::get('cash_loan_login_fee', 500);
-        $docFee = (float) SystemSetting::get('cash_loan_doc_fee', 200);
-        $verifFee = (float) SystemSetting::get('cash_loan_verification_fee', 299);
-        $totalFee = $loginFee + $docFee + $verifFee;
+            // Calculate dynamic processing fee for Elite Cash Loan
+            $loginFee = (float) SystemSetting::get('cash_loan_login_fee', 500);
+            $docFee = (float) SystemSetting::get('cash_loan_doc_fee', 200);
+            $verifFee = (float) SystemSetting::get('cash_loan_verification_fee', 299);
+            $totalFee = $loginFee + $docFee + $verifFee;
 
-        // Check if admin set a percentage or override
-        $feeType = SystemSetting::get('cash_loan_without_cibil_fee_type', 'fixed');
-        $feeValue = (float) SystemSetting::get('cash_loan_without_cibil_fee_value', $totalFee);
-        $calculatedFee = ($feeType === 'percentage') ? max(1, round($loanAmount * ($feeValue / 100), 2)) : $feeValue;
+            // Check if admin set a percentage or override
+            $feeType = SystemSetting::get('cash_loan_without_cibil_fee_type', 'fixed');
+            $feeValue = (float) SystemSetting::get('cash_loan_without_cibil_fee_value', $totalFee);
+            $calculatedFee = ($feeType === 'percentage') ? max(1, round($loanAmount * ($feeValue / 100), 2)) : $feeValue;
 
-        $applicationNo = 'ECL' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            $applicationNo = 'ECL' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
 
-        // Check if user already has an active uncompleted elite cash loan
-        $existingApp = LoanApplication::where('loan_type', 'elite_cash_loan')
-            ->where(function($q) use ($userId, $cleanMobile) {
-                if ($userId) $q->where('user_id', $userId);
-                if ($cleanMobile) $q->orWhere('mobile_number', $cleanMobile);
-            })
-            ->whereNotIn('status', ['amount_released', 'rejected', 'cancelled'])
-            ->latest()
-            ->first();
+            // Check if user already has an active uncompleted elite cash loan
+            $existingApp = LoanApplication::where('loan_type', 'elite_cash_loan')
+                ->where(function($q) use ($userId, $cleanMobile) {
+                    if ($userId) $q->where('user_id', $userId);
+                    if ($cleanMobile) $q->orWhere('mobile_number', $cleanMobile);
+                })
+                ->whereNotIn('status', ['amount_released', 'rejected', 'cancelled'])
+                ->latest()
+                ->first();
 
-        $loanApp = $existingApp ?: new LoanApplication();
+            $loanApp = $existingApp ?: new LoanApplication();
 
-        if (!$loanApp->id) {
-            $loanApp->application_number = $applicationNo;
-            $loanApp->application_no = $applicationNo;
-            $loanApp->user_id = $userId;
+            if (!$loanApp->id) {
+                $loanApp->application_number = $applicationNo;
+                $loanApp->application_no = $applicationNo;
+                $loanApp->user_id = $userId;
 
-            // 1 out of 5 (20%) automated rejection rule with cooling period
-            $isAutoRejected = (mt_rand(1, 5) === 1);
-            if ($isAutoRejected) {
-                $loanApp->validation_status = 'rejected_cooling';
-                $loanApp->rejection_reason = 'Credit risk underwriting threshold not met. A 30-day cooling period is active.';
-                $loanApp->status = 'rejected_cooling';
-                $loanApp->urgent_stage = 'rejected_cooling';
-            } else {
-                $loanApp->validation_status = 'approved';
-                $loanApp->status = 'fee_payment_pending';
-                $loanApp->urgent_stage = 'fee_payment_pending';
+                // 1 out of 5 (20%) automated rejection rule with cooling period
+                $isAutoRejected = (mt_rand(1, 5) === 1);
+                if ($isAutoRejected) {
+                    $loanApp->validation_status = 'rejected_cooling';
+                    $loanApp->rejection_reason = 'Credit risk underwriting threshold not met. A 30-day cooling period is active.';
+                    $loanApp->status = 'rejected_cooling';
+                    $loanApp->urgent_stage = 'rejected_cooling';
+                } else {
+                    $loanApp->validation_status = 'approved';
+                    $loanApp->status = 'fee_payment_pending';
+                    $loanApp->urgent_stage = 'fee_payment_pending';
+                }
             }
+
+            $loanApp->is_urgent = true;
+            $loanApp->loan_type = 'elite_cash_loan';
+            $loanApp->loan_category = 'personal_loan';
+            $loanApp->cibil_type = 'urgent';
+
+            // Loan Details
+            $loanApp->required_amount = $loanAmount;
+            $loanApp->amount = $loanAmount;
+            $loanApp->selected_amount = $loanAmount;
+            $loanApp->indicative_min_amount = $loanAmount;
+            $loanApp->indicative_max_amount = $loanAmount;
+            $loanApp->loan_purpose = $validated['loan_purpose'] ?? 'Instant Express Personal Loan';
+
+            // Applicant Details
+            $loanApp->full_name = $validated['full_name'];
+            $loanApp->dob = $validated['dob'];
+            $loanApp->gender = $validated['gender'];
+            $loanApp->mobile_number = $cleanMobile;
+            $loanApp->phone = $cleanMobile;
+            $loanApp->email = $validated['email'];
+            $loanApp->pan_number = strtoupper($validated['pan_number']);
+            $loanApp->aadhaar_number = $validated['aadhaar_number'];
+            $loanApp->address = $validated['address'] ?? null;
+            $loanApp->city = $validated['city'] ?? null;
+            $loanApp->state = $validated['state'] ?? null;
+            $loanApp->pin_code = $validated['pin_code'] ?? null;
+
+            // Income Details
+            $loanApp->employment_type = $validated['employment_type'];
+            $loanApp->company_name = $validated['company_name'] ?? null;
+            $loanApp->monthly_income = (float) $validated['monthly_income'];
+            $loanApp->existing_emi = (float) ($validated['existing_emi'] ?? 0);
+            $loanApp->work_experience = $validated['work_experience'] ?? null;
+
+            // Documents Processing - decode any base64 previews safely to disk
+            if (!empty($validated['documents_uploaded'])) {
+                $rawDocs = is_array($validated['documents_uploaded'])
+                    ? $validated['documents_uploaded']
+                    : (json_decode($validated['documents_uploaded'], true) ?: []);
+
+                $processedDocs = [];
+                foreach ($rawDocs as $docKey => $docVal) {
+                    if (is_array($docVal)) {
+                        $docName = $docVal['name'] ?? ($docKey . '.jpg');
+                        $preview = $docVal['preview'] ?? null;
+                        $savedPath = $docVal['path'] ?? null;
+
+                        if ($preview && is_string($preview) && str_starts_with($preview, 'data:image')) {
+                            try {
+                                $dataParts = explode(',', $preview);
+                                if (count($dataParts) === 2) {
+                                    $imageRaw = base64_decode($dataParts[1]);
+                                    if ($imageRaw !== false) {
+                                        $ext = str_contains($dataParts[0], 'png') ? 'png' : (str_contains($dataParts[0], 'webp') ? 'webp' : 'jpg');
+                                        $fileName = 'documents/elite_' . $docKey . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+                                        \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $imageRaw);
+                                        $savedPath = '/storage/' . $fileName;
+                                    }
+                                }
+                            } catch (\Throwable $e) {}
+                        }
+
+                        $processedDocs[$docKey] = [
+                            'name' => $docName,
+                            'path' => $savedPath ?: ($docVal['path'] ?? null),
+                            'size' => $docVal['size'] ?? 'Uploaded',
+                            'status' => 'pending',
+                            'uploaded_at' => now()->toDateTimeString(),
+                        ];
+                    } else {
+                        $processedDocs[$docKey] = $docVal;
+                    }
+                }
+
+                $loanApp->documents_uploaded = $processedDocs;
+                $loanApp->documents_status = 'pending';
+            }
+
+            // Bank Details
+            $loanApp->bank_account_holder_name = $validated['bank_account_holder_name'];
+            $loanApp->bank_name = $validated['bank_name'];
+            $loanApp->bank_account_number = $validated['bank_account_number'];
+            $loanApp->bank_ifsc_code = strtoupper($validated['bank_ifsc_code']);
+            $loanApp->bank_account_type = $validated['bank_account_type'] ?? 'Savings';
+            $loanApp->bank_details_status = 'pending';
+
+            // Fee & Gateway
+            $loanApp->processing_fee = $calculatedFee;
+            $loanApp->fee_amount = $calculatedFee;
+            $loanApp->payment_upi_id = SystemSetting::get('upi_id', 'flipflops@upi');
+
+            $loanApp->save();
+
+            // Update profile
+            try {
+                ApplicantProfile::updateOrCreate(
+                    ['loan_application_id' => $loanApp->id],
+                    [
+                        'user_id' => $userId,
+                        'full_name' => $loanApp->full_name,
+                        'dob' => $loanApp->dob,
+                        'mobile_number' => $loanApp->mobile_number,
+                        'email' => $loanApp->email,
+                        'pan_number' => $loanApp->pan_number,
+                        'aadhaar_number' => $loanApp->aadhaar_number,
+                        'gender' => $loanApp->gender,
+                        'address' => $loanApp->address,
+                        'city' => $loanApp->city,
+                        'state' => $loanApp->state,
+                        'pin_code' => $loanApp->pin_code,
+                        'employment_type' => $loanApp->employment_type,
+                        'company_name' => $loanApp->company_name,
+                        'monthly_income' => $loanApp->monthly_income,
+                        'existing_emi' => $loanApp->existing_emi,
+                        'required_amount' => $loanApp->required_amount,
+                        'loan_purpose' => 'Elite Cash Loan',
+                    ]
+                );
+            } catch (\Throwable $e) {}
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Elite Cash Loan application submitted! Please complete the 2-minute validation.',
+                'data' => $loanApp,
+            ], 201);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('EliteCashLoanController apply error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to process loan application: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $loanApp->is_urgent = true;
-        $loanApp->loan_type = 'elite_cash_loan';
-        $loanApp->loan_category = 'personal_loan';
-        $loanApp->cibil_type = 'urgent';
-
-        // Loan Details
-        $loanApp->required_amount = $loanAmount;
-        $loanApp->amount = $loanAmount;
-        $loanApp->selected_amount = $loanAmount;
-        $loanApp->indicative_min_amount = $loanAmount;
-        $loanApp->indicative_max_amount = $loanAmount;
-        $loanApp->loan_purpose = $validated['loan_purpose'] ?? 'Instant Express Personal Loan';
-
-        // Applicant Details
-        $loanApp->full_name = $validated['full_name'];
-        $loanApp->dob = $validated['dob'];
-        $loanApp->gender = $validated['gender'];
-        $loanApp->mobile_number = $cleanMobile;
-        $loanApp->phone = $cleanMobile;
-        $loanApp->email = $validated['email'];
-        $loanApp->pan_number = strtoupper($validated['pan_number']);
-        $loanApp->aadhaar_number = $validated['aadhaar_number'];
-        $loanApp->address = $validated['address'] ?? null;
-        $loanApp->city = $validated['city'] ?? null;
-        $loanApp->state = $validated['state'] ?? null;
-        $loanApp->pin_code = $validated['pin_code'] ?? null;
-
-        // Income Details
-        $loanApp->employment_type = $validated['employment_type'];
-        $loanApp->company_name = $validated['company_name'] ?? null;
-        $loanApp->monthly_income = (float) $validated['monthly_income'];
-        $loanApp->existing_emi = (float) ($validated['existing_emi'] ?? 0);
-        $loanApp->work_experience = $validated['work_experience'] ?? null;
-
-        // Documents
-        if (!empty($validated['documents_uploaded'])) {
-            $loanApp->documents_uploaded = is_array($validated['documents_uploaded'])
-                ? $validated['documents_uploaded']
-                : json_decode($validated['documents_uploaded'], true);
-            $loanApp->documents_status = 'pending';
-        }
-
-        // Bank Details
-        $loanApp->bank_account_holder_name = $validated['bank_account_holder_name'];
-        $loanApp->bank_name = $validated['bank_name'];
-        $loanApp->bank_account_number = $validated['bank_account_number'];
-        $loanApp->bank_ifsc_code = strtoupper($validated['bank_ifsc_code']);
-        $loanApp->bank_account_type = $validated['bank_account_type'] ?? 'Savings';
-        $loanApp->bank_details_status = 'pending';
-
-        // Fee & Gateway
-        $loanApp->processing_fee = $calculatedFee;
-        $loanApp->fee_amount = $calculatedFee;
-        $loanApp->payment_upi_id = SystemSetting::get('upi_id', 'flipflops@upi');
-
-        $loanApp->save();
-
-        // Update profile
-        ApplicantProfile::updateOrCreate(
-            ['loan_application_id' => $loanApp->id],
-            [
-                'user_id' => $userId,
-                'full_name' => $loanApp->full_name,
-                'dob' => $loanApp->dob,
-                'mobile_number' => $loanApp->mobile_number,
-                'email' => $loanApp->email,
-                'pan_number' => $loanApp->pan_number,
-                'aadhaar_number' => $loanApp->aadhaar_number,
-                'gender' => $loanApp->gender,
-                'address' => $loanApp->address,
-                'city' => $loanApp->city,
-                'state' => $loanApp->state,
-                'pin_code' => $loanApp->pin_code,
-                'employment_type' => $loanApp->employment_type,
-                'company_name' => $loanApp->company_name,
-                'monthly_income' => $loanApp->monthly_income,
-                'existing_emi' => $loanApp->existing_emi,
-                'required_amount' => $loanApp->required_amount,
-                'loan_purpose' => 'Elite Cash Loan',
-            ]
-        );
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Elite Cash Loan application submitted! Please complete the 2-minute validation.',
-            'data' => $loanApp,
-        ], 201);
     }
 
     /**
@@ -193,41 +239,67 @@ class EliteCashLoanController extends Controller
      */
     public function submitPayment(Request $request, $id)
     {
-        $request->validate([
-            'transaction_id' => 'required|string|min:6',
-            'payment_screenshot' => 'required|string',
-        ], [
-            'payment_screenshot.required' => 'Payment receipt screenshot is strictly required to process your application.',
-            'transaction_id.required' => 'UTR / Transaction reference number is required.',
-        ]);
+        try {
+            $request->validate([
+                'transaction_id' => 'required|string|min:6',
+                'payment_screenshot' => 'required|string',
+            ], [
+                'payment_screenshot.required' => 'Payment receipt screenshot is strictly required to process your application.',
+                'transaction_id.required' => 'UTR / Transaction reference number is required.',
+            ]);
 
-        $loanApp = LoanApplication::findOrFail($id);
+            $loanApp = LoanApplication::findOrFail($id);
 
-        $txId = trim($request->input('transaction_id'));
-        $loanApp->transaction_id = $txId;
+            $txId = trim($request->input('transaction_id'));
+            $loanApp->transaction_id = $txId;
 
-        if ($request->has('payment_screenshot') && !empty($request->payment_screenshot)) {
-            $loanApp->payment_screenshot = $request->payment_screenshot;
-        } elseif ($request->hasFile('payment_screenshot')) {
-            $path = $request->file('payment_screenshot')->store('payment_receipts', 'public');
-            $loanApp->payment_screenshot = '/storage/' . $path;
+            if ($request->has('payment_screenshot') && !empty($request->payment_screenshot)) {
+                $screenshotVal = $request->payment_screenshot;
+                if (is_string($screenshotVal) && str_starts_with($screenshotVal, 'data:image')) {
+                    try {
+                        $dataParts = explode(',', $screenshotVal);
+                        if (count($dataParts) === 2) {
+                            $imageRaw = base64_decode($dataParts[1]);
+                            if ($imageRaw !== false) {
+                                $ext = str_contains($dataParts[0], 'png') ? 'png' : (str_contains($dataParts[0], 'webp') ? 'webp' : 'jpg');
+                                $fileName = 'payment_receipts/elite_receipt_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+                                \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $imageRaw);
+                                $loanApp->payment_screenshot = '/storage/' . $fileName;
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        $loanApp->payment_screenshot = $screenshotVal;
+                    }
+                } else {
+                    $loanApp->payment_screenshot = $screenshotVal;
+                }
+            } elseif ($request->hasFile('payment_screenshot')) {
+                $path = $request->file('payment_screenshot')->store('payment_receipts', 'public');
+                $loanApp->payment_screenshot = '/storage/' . $path;
+            }
+
+            $loanApp->payment_status = 'paid';
+            $loanApp->fee_payment_status = 'pending_approval';
+            $loanApp->fee_paid_at = now();
+
+            // Sets application to Under Review (Admin Verification Pending)
+            $loanApp->status = 'under_review';
+            $loanApp->urgent_stage = 'under_review';
+            $loanApp->final_decision = 'PROCESSING';
+            $loanApp->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Your application has been submitted successfully and is awaiting admin verification.',
+                'data' => $loanApp,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('EliteCashLoanController submitPayment error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to submit payment verification: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $loanApp->payment_status = 'paid';
-        $loanApp->fee_payment_status = 'pending_approval';
-        $loanApp->fee_paid_at = now();
-
-        // Sets application to Under Review (Admin Verification Pending)
-        $loanApp->status = 'under_review';
-        $loanApp->urgent_stage = 'under_review';
-        $loanApp->final_decision = 'PROCESSING';
-        $loanApp->save();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Your application has been submitted successfully and is awaiting admin verification.',
-            'data' => $loanApp,
-        ]);
     }
 
     /**
