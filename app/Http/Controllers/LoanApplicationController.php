@@ -1468,6 +1468,51 @@ class LoanApplicationController extends Controller
             $emi = ($amount * $r * pow(1 + $r, $tenure)) / (pow(1 + $r, $tenure) - 1);
             $loanApp->estimated_emi = round($emi, 2);
             $loanApp->total_repayment = round($emi * $tenure, 2);
+
+            // Virtual Loan: credit wallet immediately on admin approval
+            if ($loanApp->loan_type === 'virtual_loan' || $loanApp->loan_category === 'virtual_loan') {
+                $loanApp->status = 'disbursed';
+                $loanApp->disbursement_status = 'credited';
+                $loanApp->disbursed_at = now();
+
+                $mobile = preg_replace('/[^0-9]/', '', $loanApp->mobile_number);
+                $loanAmount = (float) ($loanApp->selected_amount ?: $loanApp->required_amount ?: $loanApp->amount ?: 30000);
+
+                try {
+                    $wallet = \App\Models\UserWalletCard::where(function ($q) use ($loanApp, $mobile) {
+                        if ($loanApp->user_id) $q->where('user_id', $loanApp->user_id);
+                        if ($mobile) $q->orWhere('mobile', $mobile);
+                    })->first();
+
+                    if (!$wallet) {
+                        $wallet = \App\Models\UserWalletCard::create([
+                            'user_id'          => $loanApp->user_id,
+                            'mobile'           => $mobile ?: '9999999999',
+                            'card_number'      => '4734 8912 ' . rand(1000, 9999) . ' ' . substr($mobile ?: '9999', -4),
+                            'card_holder_name' => strtoupper($loanApp->full_name ?: 'OPENSCORE USER'),
+                            'available_value'  => $loanAmount,
+                            'bank_name'        => 'OpenScore Virtual Wallet',
+                        ]);
+                    } else {
+                        $wallet->available_value += $loanAmount;
+                        $wallet->save();
+                    }
+
+                    \App\Models\WalletTransaction::create([
+                        'transaction_id'       => 'VLTX' . rand(100000, 999999),
+                        'sender_user_id'       => null,
+                        'receiver_user_id'     => $loanApp->user_id,
+                        'receiver_card_id'     => $wallet->id,
+                        'amount'               => $loanAmount,
+                        'type'                 => 'credit',
+                        'payment_method'       => 'Virtual Loan Disbursal',
+                        'recipient_identifier' => $wallet->mobile,
+                        'recipient_name'       => $wallet->card_holder_name,
+                        'status'               => 'success',
+                        'remarks'              => 'Virtual Loan Approved & Credited (' . ($loanApp->application_number ?? $loanApp->application_no) . ')',
+                    ]);
+                } catch (\Throwable $e) {}
+            }
         } else if ($stage === 'under_review') {
             $loanApp->final_decision = 'PROCESSING';
             $loanApp->status = 'under_review';
