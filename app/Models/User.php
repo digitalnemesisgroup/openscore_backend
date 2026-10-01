@@ -51,15 +51,15 @@ class User extends Authenticatable
                         'mobile' => $cleanMobile,
                         'card_number' => '4734 8912 ' . rand(1000, 9999) . ' ' . $suffix,
                         'card_holder_name' => strtoupper($user->name ?: 'OpenScore User'),
-                        'valid_thru' => null,
+                        'valid_thru' => '',
                         'available_value' => 0.00, // Default initial wallet balance
                         'incremental_value' => 0.00,
-                        'daily_increment' => null,
+                        'daily_increment' => '',
                         'card_type' => $user->account_type === 'business' ? 'MERCHANT BUSINESS CARD' : 'PREMIUM METAL CARD',
-                        'bank_name' => null,
+                        'bank_name' => '',
                         'bank_account_number' => '00' . rand(10000000, 99999999) . $suffix,
-                        'bank_reference_no' => null,
-                        'settlement_status' => null,
+                        'bank_reference_no' => '',
+                        'settlement_status' => '',
                     ]);
                 }
             } catch (\Throwable $e) {

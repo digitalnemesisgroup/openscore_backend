@@ -164,16 +164,16 @@ class UserWalletCardController extends Controller
             'mobile' => $cleanMobile,
             'card_number' => $cardNumber,
             'card_holder_name' => strtoupper($holderName),
-            'valid_thru' => null,
+            'valid_thru' => '',
             'available_value' => $availValue,
             'incremental_value' => 0.00,
-            'daily_increment' => null,
-            'verifying_status' => null,
+            'daily_increment' => '',
+            'verifying_status' => '',
             'card_type' => 'PREMIUM METAL CARD',
-            'bank_name' => null,
+            'bank_name' => '',
             'bank_account_number' => $bankAcc,
-            'bank_reference_no' => null,
-            'settlement_status' => null,
+            'bank_reference_no' => '',
+            'settlement_status' => '',
         ]);
     }
 
