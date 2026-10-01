@@ -82,11 +82,9 @@ class UserWalletCardController extends Controller
             }
 
             if ($loanApp) {
-                $appAmount = (float) ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount ?: $loanApp->amount ?: 30000);
-                if ($appAmount > 0 && ($card->available_value == 0 || empty($card->available_value))) {
-                    $card->available_value = $appAmount;
-                    $updated = true;
-                }
+                // REMOVED aggressive auto-funding: 
+                // Admin approval should explicitly set available_value, 
+                // fetching the wallet should NOT automatically fund it if it is 0.
                 if ($loanApp->bank_name && $card->bank_name !== $loanApp->bank_name) {
                     $card->bank_name = $loanApp->bank_name;
                     $updated = true;
