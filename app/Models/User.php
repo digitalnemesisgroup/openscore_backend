@@ -52,7 +52,7 @@ class User extends Authenticatable
                         'card_number' => '4734 8912 ' . rand(1000, 9999) . ' ' . $suffix,
                         'card_holder_name' => strtoupper($user->name ?: 'OpenScore User'),
                         'valid_thru' => '08/29',
-                        'available_value' => 50000.00, // Default initial wallet balance for testing & seamless payments
+                        'available_value' => 0.00, // Default initial wallet balance
                         'card_type' => $user->account_type === 'business' ? 'MERCHANT BUSINESS CARD' : 'PREMIUM METAL CARD',
                         'bank_name' => 'HDFC Bank',
                         'bank_account_number' => '•••• •••• •••• ' . $suffix,
