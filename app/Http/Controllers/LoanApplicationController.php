@@ -986,49 +986,31 @@ class LoanApplicationController extends Controller
 
     public static function calculateApplicableFee(string $loanType, float $principal, ?string $cibilType = null): float
     {
-        // 1. Virtual Card / Loan / Voucher (Single Activation / Processing Fee)
         if (str_contains($loanType, 'virtual') || str_contains($loanType, 'voucher')) {
-            $type = SystemSetting::get('virtual_loan_fee_type', 'fixed');
-            $val = (float) SystemSetting::get('virtual_loan_fee_value', 299);
-            return ($type === 'percentage') ? max(1, round($principal * ($val / 100), 2)) : $val;
+            $base = (float) SystemSetting::get('virtual_loan_login_fee', 100) +
+                    (float) SystemSetting::get('virtual_loan_doc_fee', 100) +
+                    (float) SystemSetting::get('virtual_loan_verification_fee', 99);
+            $additional = SystemSetting::get('virtual_loan_additional_fees', []);
+            $addSum = is_array($additional) ? array_sum(array_column($additional, 'amount')) : 0;
+            return $base + $addSum;
         }
 
-        // 2. Construction Loan (3 Tiers: Without CIBIL, Low CIBIL, High CIBIL >700)
         if (str_contains($loanType, 'construction')) {
-            $isHigh = ($loanType === 'construction_good_cibil' || $loanType === 'construction_high_cibil' || $cibilType === 'good_cibil' || $cibilType === 'high_cibil');
-            $isLow = ($loanType === 'construction_low_cibil' || $cibilType === 'low_cibil');
-
-            if ($isHigh) {
-                $type = SystemSetting::get('construction_loan_high_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed'));
-                $val = (float) SystemSetting::get('construction_loan_high_cibil_fee_value', 499);
-            } elseif ($isLow) {
-                $type = SystemSetting::get('construction_loan_low_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed'));
-                $val = (float) SystemSetting::get('construction_loan_low_cibil_fee_value', 999);
-            } else {
-                // Without CIBIL (or default construction loan)
-                $type = SystemSetting::get('construction_loan_without_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed'));
-                $val = (float) SystemSetting::get('construction_loan_without_cibil_fee_value', SystemSetting::get('construction_loan_fee_value', 999));
-            }
-            return ($type === 'percentage') ? max(1, round($principal * ($val / 100), 2)) : $val;
+            $base = (float) SystemSetting::get('construction_loan_login_fee', 500) +
+                    (float) SystemSetting::get('construction_loan_doc_fee', 300) +
+                    (float) SystemSetting::get('construction_loan_site_verification_fee', 699);
+            $additional = SystemSetting::get('construction_loan_additional_fees', []);
+            $addSum = is_array($additional) ? array_sum(array_column($additional, 'amount')) : 0;
+            return $base + $addSum;
         }
 
-        // 3. Cash Loan (3 Tiers: Without CIBIL, Low CIBIL, High CIBIL >700)
-        $isHigh = ($loanType === 'good_cibil' || $loanType === 'high_cibil' || $cibilType === 'good_cibil' || $cibilType === 'high_cibil');
-        $isLow = ($loanType === 'low_cibil' || $cibilType === 'low_cibil');
-
-        if ($isHigh) {
-            $type = SystemSetting::get('cash_loan_high_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed'));
-            $val = (float) SystemSetting::get('cash_loan_high_cibil_fee_value', SystemSetting::get('cash_loan_good_cibil_fee_value', 499));
-        } elseif ($isLow) {
-            $type = SystemSetting::get('cash_loan_low_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed'));
-            $val = (float) SystemSetting::get('cash_loan_low_cibil_fee_value', 999);
-        } else {
-            // Without CIBIL (or default cash loan)
-            $type = SystemSetting::get('cash_loan_without_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed'));
-            $val = (float) SystemSetting::get('cash_loan_without_cibil_fee_value', SystemSetting::get('cash_loan_fee_value', 999));
-        }
-
-        return ($type === 'percentage') ? max(1, round($principal * ($val / 100), 2)) : $val;
+        // Default to Cash Loan
+        $base = (float) SystemSetting::get('cash_loan_login_fee', 500) +
+                (float) SystemSetting::get('cash_loan_doc_fee', 200) +
+                (float) SystemSetting::get('cash_loan_verification_fee', 299);
+        $additional = SystemSetting::get('cash_loan_additional_fees', []);
+        $addSum = is_array($additional) ? array_sum(array_column($additional, 'amount')) : 0;
+        return $base + $addSum;
     }
 
     public static function getCooldownDays()
@@ -1077,6 +1059,10 @@ class LoanApplicationController extends Controller
         $constSiteFee = (float) SystemSetting::get('construction_loan_site_verification_fee', 699);
         $constTotalFee = $constLoginFee + $constDocFee + $constSiteFee;
 
+        $cashAdditionalFees = SystemSetting::get('cash_loan_additional_fees', []);
+        $constAdditionalFees = SystemSetting::get('construction_loan_additional_fees', []);
+        $virtualAdditionalFees = SystemSetting::get('virtual_loan_additional_fees', []);
+
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -1093,6 +1079,7 @@ class LoanApplicationController extends Controller
                     ['label' => 'Document & KYC Processing Fee', 'amount' => $cashDocFee],
                     ['label' => 'Express Risk & Sanction Verification Fee', 'amount' => $cashVerifFee],
                 ],
+                'cash_loan_additional_fees' => $cashAdditionalFees,
 
                 // Construction Loan / Urgent Construction Itemized Breakdown
                 'construction_loan_login_fee' => $constLoginFee,
@@ -1104,6 +1091,7 @@ class LoanApplicationController extends Controller
                     ['label' => 'Document & Title Verification Fee', 'amount' => $constDocFee],
                     ['label' => 'Site & Technical Inspection Fee', 'amount' => $constSiteFee],
                 ],
+                'construction_loan_additional_fees' => $constAdditionalFees,
 
                 // Cash Loan - 3 Tiers
                 'cash_loan_without_cibil_fee_type' => SystemSetting::get('cash_loan_without_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed')),
@@ -1121,9 +1109,11 @@ class LoanApplicationController extends Controller
                 'construction_loan_high_cibil_fee_type' => SystemSetting::get('construction_loan_high_cibil_fee_type', SystemSetting::get('construction_loan_fee_type', 'fixed')),
                 'construction_loan_high_cibil_fee_value' => (float) SystemSetting::get('construction_loan_high_cibil_fee_value', 499),
 
-                // Virtual Card / Loan / Voucher - Single Fee
-                'virtual_loan_fee_type' => SystemSetting::get('virtual_loan_fee_type', 'fixed'),
-                'virtual_loan_fee_value' => (float) SystemSetting::get('virtual_loan_fee_value', 299),
+                // Virtual Card / Loan / Voucher Itemized Breakdown
+                'virtual_loan_login_fee' => (float) SystemSetting::get('virtual_loan_login_fee', 100),
+                'virtual_loan_doc_fee' => (float) SystemSetting::get('virtual_loan_doc_fee', 100),
+                'virtual_loan_verification_fee' => (float) SystemSetting::get('virtual_loan_verification_fee', 99),
+                'virtual_loan_additional_fees' => $virtualAdditionalFees,
 
                 // Legacy aliases for backward compatibility
                 'cash_loan_fee_type' => SystemSetting::get('cash_loan_without_cibil_fee_type', SystemSetting::get('cash_loan_fee_type', 'fixed')),
@@ -1164,8 +1154,13 @@ class LoanApplicationController extends Controller
             'construction_loan_high_cibil_fee_type' => 'nullable|string|in:fixed,percentage',
             'construction_loan_high_cibil_fee_value' => 'nullable|numeric|min:0',
 
-            'virtual_loan_fee_type' => 'nullable|string|in:fixed,percentage',
-            'virtual_loan_fee_value' => 'nullable|numeric|min:0',
+            'virtual_loan_login_fee' => 'nullable|numeric|min:0',
+            'virtual_loan_doc_fee' => 'nullable|numeric|min:0',
+            'virtual_loan_verification_fee' => 'nullable|numeric|min:0',
+
+            'cash_loan_additional_fees' => 'nullable|array',
+            'construction_loan_additional_fees' => 'nullable|array',
+            'virtual_loan_additional_fees' => 'nullable|array',
 
             // Legacy keys support
             'cash_loan_fee_type' => 'nullable|string|in:fixed,percentage',
@@ -1185,7 +1180,8 @@ class LoanApplicationController extends Controller
             'construction_loan_without_cibil_fee_type', 'construction_loan_without_cibil_fee_value',
             'construction_loan_low_cibil_fee_type', 'construction_loan_low_cibil_fee_value',
             'construction_loan_high_cibil_fee_type', 'construction_loan_high_cibil_fee_value',
-            'virtual_loan_fee_type', 'virtual_loan_fee_value',
+            'virtual_loan_login_fee', 'virtual_loan_doc_fee', 'virtual_loan_verification_fee',
+            'cash_loan_additional_fees', 'construction_loan_additional_fees', 'virtual_loan_additional_fees',
             'cash_loan_fee_type', 'cash_loan_fee_value', 'cash_loan_good_cibil_fee_value',
             'construction_loan_fee_type', 'construction_loan_fee_value',
         ];
@@ -1193,10 +1189,12 @@ class LoanApplicationController extends Controller
         foreach ($fields as $field) {
             if ($request->has($field)) {
                 $val = $request->input($field);
-                if (is_numeric($val)) {
+                if (is_array($val)) {
+                    SystemSetting::set($field, $val);
+                } else if (is_numeric($val)) {
                     SystemSetting::set($field, (float) $val);
                 } else if ($val !== null && $val !== '') {
-                    SystemSetting::set($field, trim($val));
+                    SystemSetting::set($field, trim((string) $val));
                 }
             }
         }
@@ -1552,16 +1550,15 @@ class LoanApplicationController extends Controller
                     $cleanHdr = preg_replace('/[^0-9]/', '', $hdrMobile);
                     $query->where('mobile_number', $cleanHdr);
                 } else {
-                    return response()->json([
-                        'status' => 'success',
-                        'data' => [],
-                        'pagination' => [
-                            'current_page' => 1,
-                            'last_page' => 1,
-                            'per_page' => 50,
-                            'total' => 0,
-                        ],
-                    ]);
+                    $sessionMobile = session('user_mobile') ?: session('mobile');
+                    if ($sessionMobile) {
+                        $query->where('mobile_number', preg_replace('/[^0-9]/', '', $sessionMobile));
+                    } else {
+                        $latestApp = LoanApplication::latest()->first();
+                        if ($latestApp && $latestApp->mobile_number) {
+                            $query->where('mobile_number', $latestApp->mobile_number);
+                        }
+                    }
                 }
             }
         }
@@ -2056,6 +2053,10 @@ class LoanApplicationController extends Controller
             $existing->selected_amount = $amount;
             $existing->processing_fee = $processingFee;
             $existing->fee_amount = $processingFee;
+            $existing->is_urgent = true;
+            if (!$existing->urgent_stage || $existing->urgent_stage === 'fee_payment_pending') {
+                $existing->urgent_stage = 'fee_payment_pending';
+            }
             if (!$existing->payment_upi_id) {
                 $existing->payment_upi_id = SystemSetting::get('upi_id', 'flipflops@upi');
             }
@@ -2066,6 +2067,7 @@ class LoanApplicationController extends Controller
             if ($address) $existing->address = $address;
             if ($userId && !$existing->user_id) $existing->user_id = $userId;
             $existing->save();
+            $this->syncUserWalletCard($existing, $user);
 
             return response()->json([
                 'status' => 'success',
@@ -2081,6 +2083,8 @@ class LoanApplicationController extends Controller
         $loanApp->user_id = $userId;
         $loanApp->application_no = $applicationNo;
         $loanApp->application_number = $applicationNo;
+        $loanApp->is_urgent = true;
+        $loanApp->urgent_stage = 'fee_payment_pending';
         $loanApp->loan_type = 'virtual_loan';
         $loanApp->loan_category = 'virtual_loan';
         $loanApp->amount = $amount;
@@ -2105,12 +2109,58 @@ class LoanApplicationController extends Controller
         $loanApp->stage = 'documents';
         $loanApp->save();
 
+        $this->syncUserWalletCard($loanApp, $user);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Virtual loan application created successfully.',
             'application_id' => $loanApp->id,
             'data' => $loanApp,
         ]);
+    }
+
+    private function syncUserWalletCard($loanApp, $user = null)
+    {
+        try {
+            if (!$loanApp) return null;
+            $walletMob = preg_replace('/[^0-9]/', '', $loanApp->mobile_number ?? $loanApp->phone ?? '');
+            $approvedAmt = (float) ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount ?: $loanApp->amount ?: 30000);
+            $userId = $user ? $user->id : $loanApp->user_id;
+
+            $wallet = \App\Models\UserWalletCard::where(function($q) use ($userId, $walletMob) {
+                if ($userId) $q->where('user_id', $userId);
+                if ($walletMob) $q->orWhere('mobile', $walletMob);
+            })->first();
+
+            if (!$wallet) {
+                $wallet = \App\Models\UserWalletCard::create([
+                    'user_id' => $userId,
+                    'mobile' => $walletMob,
+                    'card_number' => '4734 8912 ' . rand(1000, 9999) . ' ' . substr($walletMob ?: '4734', -4),
+                    'card_holder_name' => strtoupper($loanApp->full_name ?: ($user ? $user->name : 'OPENSCORE USER')),
+                    'valid_thru' => '08/29',
+                    'available_value' => $approvedAmt,
+                    'incremental_value' => 0.00,
+                    'daily_increment' => '+0.00',
+                    'verifying_status' => 'PENDING_ADMIN_APPROVAL',
+                    'card_type' => 'PREMIUM METAL CARD',
+                    'bank_name' => $loanApp->bank_name ?: 'HDFC Bank',
+                    'bank_account_number' => $loanApp->bank_account_number ?: ('•••• •••• •••• ' . substr($walletMob ?: '9123', -4)),
+                    'bank_reference_no' => 'OSV' . rand(10000000, 99999999),
+                    'settlement_status' => 'LOCKED (PENDING ADMIN APPROVAL)',
+                ]);
+            } else {
+                $wallet->available_value = $approvedAmt;
+                if ($loanApp->full_name) {
+                    $wallet->card_holder_name = strtoupper($loanApp->full_name);
+                }
+                $wallet->save();
+            }
+            return $wallet;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('syncUserWalletCard warning: ' . $e->getMessage());
+            return null;
+        }
     }
 
     public function uploadVirtualDocuments(Request $request, $id)
@@ -2228,7 +2278,10 @@ class LoanApplicationController extends Controller
             $loanApp->documents_status = 'under_review';
             $loanApp->status = 'documents_submitted';
             $loanApp->stage = 'documents';
+            $loanApp->is_urgent = true;
             $loanApp->save();
+
+            $this->syncUserWalletCard($loanApp, $user);
 
             return response()->json([
                 'status' => 'success',
@@ -2274,6 +2327,8 @@ class LoanApplicationController extends Controller
                 $loanApp->user_id = $userId;
                 $loanApp->application_no = $applicationNo;
                 $loanApp->application_number = $applicationNo;
+                $loanApp->is_urgent = true;
+                $loanApp->urgent_stage = 'under_review';
                 $loanApp->loan_type = 'virtual_loan';
                 $loanApp->loan_category = 'virtual_loan';
                 $loanApp->amount = 30000;
@@ -2290,6 +2345,8 @@ class LoanApplicationController extends Controller
             $loanApp->fee_payment_status = 'pending_approval';
             $loanApp->status = 'documents_submitted';
             $loanApp->stage = 'documents';
+            $loanApp->is_urgent = true;
+            $loanApp->urgent_stage = 'under_review';
 
             // Check if payment proof screenshot is uploaded
             $docs = is_array($loanApp->documents_uploaded)
@@ -2436,7 +2493,16 @@ class LoanApplicationController extends Controller
         $approvedAmount = (float) ($loanApp ? ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount ?: $loanApp->amount ?: 30000) : 30000);
         $userName = ($user && !empty($user->name)) ? $user->name : ($loanApp && !empty($loanApp->full_name) ? $loanApp->full_name : 'Rahul');
 
-        $isDisbursed = $loanApp && ($loanApp->status === 'disbursed' || $loanApp->fee_payment_status === 'approved' || $loanApp->final_decision === 'APPROVED');
+        $isDisbursed = $loanApp && (
+            $loanApp->status === 'disbursed' ||
+            $loanApp->status === 'approved' ||
+            $loanApp->status === 'sanction_approved' ||
+            $loanApp->fee_payment_status === 'approved' ||
+            $loanApp->final_decision === 'APPROVED' ||
+            $loanApp->urgent_stage === 'sanction_approved' ||
+            $loanApp->urgent_stage === 'amount_released' ||
+            ($wallet && ($wallet->verifying_status === 'approved' || $wallet->status === 'approved'))
+        );
         $isPendingApproval = $loanApp && ($loanApp->payment_status === 'paid' && !$isDisbursed);
 
         $availableAmount = ($wallet && $wallet->available_value > 0) ? (float) $wallet->available_value : $approvedAmount;

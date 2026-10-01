@@ -116,6 +116,164 @@ try {
         } catch (\Throwable $ue) {
             $logs[] = "ℹ Admin Account Note: " . htmlspecialchars($ue->getMessage());
         }
+
+        // 4b. Seed/Ensure User & Active Loans (Virtual, Elite, Construction)
+        try {
+            $user = User::updateOrCreate(
+                ['mobile' => '9876548516'],
+                [
+                    'name' => 'Avisekh Kumar Tewari',
+                    'email' => 'avisekh@gmail.com',
+                    'mobile' => '9876548516',
+                    'role' => 'user',
+                    'pan_number' => 'ABCDE1234F',
+                    'aadhaar_number' => '123456789012',
+                    'password' => \Illuminate\Support\Facades\Hash::make('password123'),
+                ]
+            );
+
+            // Virtual Loan (Approved ₹30,000)
+            \App\Models\LoanApplication::updateOrCreate(
+                ['application_number' => 'OSV-30000'],
+                [
+                    'user_id' => $user->id,
+                    'loan_type' => 'virtual_loan',
+                    'loan_category' => 'virtual',
+                    'full_name' => 'Avisekh Kumar Tewari',
+                    'dob' => '1995-05-15',
+                    'gender' => 'male',
+                    'pan_number' => 'ABCDE1234F',
+                    'aadhaar_number' => '123456789012',
+                    'employment_type' => 'salaried',
+                    'monthly_income' => 45000,
+                    'address' => 'Flat 402, Royal Residency',
+                    'city' => 'Mumbai',
+                    'state' => 'Maharashtra',
+                    'pin_code' => '400001',
+                    'mobile_number' => '9876548516',
+                    'email' => 'avisekh@gmail.com',
+                    'selected_amount' => 30000,
+                    'required_amount' => 30000,
+                    'approved_amount' => 30000,
+                    'indicative_min_amount' => 25000,
+                    'indicative_max_amount' => 50000,
+                    'indicative_interest_rate' => 0.0,
+                    'estimated_emi' => 10000,
+                    'total_repayment' => 30000,
+                    'total_interest' => 0,
+                    'selected_tenure' => 90,
+                    'tenure_months' => 3,
+                    'status' => 'approved',
+                    'final_decision' => 'APPROVED',
+                    'disbursement_status' => 'credited',
+                    'payment_status' => 'verified',
+                    'fee_payment_status' => 'approved',
+                    'processing_fee' => 199,
+                    'fee_amount' => 199,
+                    'selected_partner_name' => 'OpenScore Smart Value Virtual Line',
+                ]
+            );
+
+            // Elite Cash Loan (In Review ₹50,000)
+            \App\Models\LoanApplication::updateOrCreate(
+                ['application_number' => 'ECL-50821'],
+                [
+                    'user_id' => $user->id,
+                    'loan_type' => 'elite_cash_loan',
+                    'loan_category' => 'cash',
+                    'full_name' => 'Avisekh Kumar Tewari',
+                    'dob' => '1995-05-15',
+                    'gender' => 'male',
+                    'pan_number' => 'ABCDE1234F',
+                    'aadhaar_number' => '123456789012',
+                    'employment_type' => 'salaried',
+                    'monthly_income' => 45000,
+                    'address' => 'Flat 402, Royal Residency',
+                    'city' => 'Mumbai',
+                    'state' => 'Maharashtra',
+                    'pin_code' => '400001',
+                    'mobile_number' => '9876548516',
+                    'email' => 'avisekh@gmail.com',
+                    'selected_amount' => 50000,
+                    'required_amount' => 50000,
+                    'approved_amount' => 50000,
+                    'indicative_min_amount' => 30000,
+                    'indicative_max_amount' => 100000,
+                    'indicative_interest_rate' => 8.5,
+                    'estimated_emi' => 4350,
+                    'total_repayment' => 52200,
+                    'total_interest' => 2200,
+                    'selected_tenure' => 12,
+                    'tenure_months' => 12,
+                    'status' => 'in_review',
+                    'final_decision' => 'PENDING',
+                    'payment_status' => 'paid',
+                    'fee_payment_status' => 'verified',
+                    'processing_fee' => 499,
+                    'fee_amount' => 499,
+                    'selected_partner_name' => 'OpenScore Express Direct NBFC',
+                ]
+            );
+
+            // Urgent Construction Loan (In Progress ₹2,50,000)
+            \App\Models\LoanApplication::updateOrCreate(
+                ['application_number' => 'UCL-89210'],
+                [
+                    'user_id' => $user->id,
+                    'loan_type' => 'urgent_construction_loan',
+                    'loan_category' => 'construction',
+                    'full_name' => 'Avisekh Kumar Tewari',
+                    'dob' => '1995-05-15',
+                    'gender' => 'male',
+                    'pan_number' => 'ABCDE1234F',
+                    'aadhaar_number' => '123456789012',
+                    'employment_type' => 'salaried',
+                    'monthly_income' => 45000,
+                    'address' => 'Flat 402, Royal Residency',
+                    'city' => 'Mumbai',
+                    'state' => 'Maharashtra',
+                    'pin_code' => '400001',
+                    'mobile_number' => '9876548516',
+                    'email' => 'avisekh@gmail.com',
+                    'selected_amount' => 250000,
+                    'required_amount' => 250000,
+                    'approved_amount' => 250000,
+                    'indicative_min_amount' => 100000,
+                    'indicative_max_amount' => 500000,
+                    'indicative_interest_rate' => 7.5,
+                    'estimated_emi' => 11250,
+                    'total_repayment' => 270000,
+                    'total_interest' => 20000,
+                    'selected_tenure' => 24,
+                    'tenure_months' => 24,
+                    'status' => 'proof_submitted',
+                    'final_decision' => 'PENDING',
+                    'payment_status' => 'paid',
+                    'fee_payment_status' => 'verified',
+                    'processing_fee' => 999,
+                    'fee_amount' => 999,
+                    'selected_partner_name' => 'OpenScore Infrastructure Lending Partner',
+                ]
+            );
+
+            // User Wallet Card
+            \App\Models\UserWalletCard::updateOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'available_value' => 30000,
+                    'card_holder_name' => 'AVISEKH KUMAR TEWARI',
+                    'card_number' => '4734 8912 1805 8516',
+                    'mobile' => '9876548516',
+                    'bank_name' => 'IDFC FIRST Bank',
+                    'bank_account_number' => '9123',
+                    'is_locked' => false,
+                    'is_admin_approved' => true,
+                ]
+            );
+            $logs[] = "✓ User Loans & Wallet initialized for Avisekh Kumar Tewari (Virtual, Elite Cash, Urgent Construction).";
+        } catch (\Throwable $le) {
+            $logs[] = "ℹ User Loans Note: " . htmlspecialchars($le->getMessage());
+        }
     }
 
     if ($action === 'run_safe_setup' || $action === 'clear_cache') {

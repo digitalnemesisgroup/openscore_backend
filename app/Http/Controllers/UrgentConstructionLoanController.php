@@ -471,44 +471,97 @@ class UrgentConstructionLoanController extends Controller
     // =========================================================================
 
     /**
-     * Admin list urgent construction loan applications
+     * Admin list urgent construction loan & virtual loan applications
      */
     public function adminIndex(Request $request)
     {
-        $query = LoanApplication::where('is_urgent', true)->latest();
+        $query = LoanApplication::where(function($q) {
+            $q->where('is_urgent', true)
+              ->orWhere('loan_type', 'virtual_loan')
+              ->orWhere('loan_category', 'virtual_loan')
+              ->orWhere('loan_type', 'LIKE', '%virtual%');
+        })->latest();
 
         if ($request->has('search') && !empty($request->search)) {
             $s = trim($request->search);
             $query->where(function($q) use ($s) {
                 $q->where('full_name', 'LIKE', "%{$s}%")
                   ->orWhere('mobile_number', 'LIKE', "%{$s}%")
+                  ->orWhere('phone', 'LIKE', "%{$s}%")
                   ->orWhere('application_number', 'LIKE', "%{$s}%")
+                  ->orWhere('application_no', 'LIKE', "%{$s}%")
                   ->orWhere('pan_number', 'LIKE', "%{$s}%")
                   ->orWhere('transaction_id', 'LIKE', "%{$s}%");
             });
         }
 
         if ($request->has('stage') && !empty($request->stage) && $request->stage !== 'all') {
-            $query->where('urgent_stage', $request->stage);
+            $stage = $request->stage;
+            $query->where(function($q) use ($stage) {
+                $q->where('urgent_stage', $stage)
+                  ->orWhere('status', $stage);
+            });
         }
 
         if ($request->has('loan_type') && !empty($request->loan_type) && $request->loan_type !== 'all') {
-            $query->where('loan_type', $request->loan_type);
+            $type = $request->loan_type;
+            if ($type === 'virtual_loan') {
+                $query->where(function($q) {
+                    $q->where('loan_type', 'virtual_loan')
+                      ->orWhere('loan_category', 'virtual_loan')
+                      ->orWhere('loan_type', 'LIKE', '%virtual%');
+                });
+            } else {
+                $query->where('loan_type', $type);
+            }
         }
 
-        $baseCountQuery = LoanApplication::where('is_urgent', true);
+        $baseCountQuery = LoanApplication::where(function($q) {
+            $q->where('is_urgent', true)
+              ->orWhere('loan_type', 'virtual_loan')
+              ->orWhere('loan_category', 'virtual_loan')
+              ->orWhere('loan_type', 'LIKE', '%virtual%');
+        });
+
         if ($request->has('loan_type') && !empty($request->loan_type) && $request->loan_type !== 'all') {
-            $baseCountQuery->where('loan_type', $request->loan_type);
+            $type = $request->loan_type;
+            if ($type === 'virtual_loan') {
+                $baseCountQuery->where(function($q) {
+                    $q->where('loan_type', 'virtual_loan')
+                      ->orWhere('loan_category', 'virtual_loan')
+                      ->orWhere('loan_type', 'LIKE', '%virtual%');
+                });
+            } else {
+                $baseCountQuery->where('loan_type', $type);
+            }
         }
 
         $totalCount = (clone $baseCountQuery)->count();
-        $underReviewCount = (clone $baseCountQuery)->where('urgent_stage', 'under_review')->count();
-        $docsRequiredCount = (clone $baseCountQuery)->where('urgent_stage', 'docs_required')->count();
+        $underReviewCount = (clone $baseCountQuery)->where(function($q) {
+            $q->where('urgent_stage', 'under_review')
+              ->orWhere('status', 'under_review')
+              ->orWhere('status', 'documents_submitted');
+        })->count();
+        $docsRequiredCount = (clone $baseCountQuery)->where(function($q) {
+            $q->where('urgent_stage', 'docs_required')
+              ->orWhere('status', 'docs_required')
+              ->orWhere('status', 'documents_pending');
+        })->count();
         $technicalCount = (clone $baseCountQuery)->where('urgent_stage', 'technical_verification')->count();
         $bankProcessingCount = (clone $baseCountQuery)->where('urgent_stage', 'bank_processing')->count();
-        $approvedCount = (clone $baseCountQuery)->where('urgent_stage', 'sanction_approved')->count();
-        $disbursedCount = (clone $baseCountQuery)->where('urgent_stage', 'amount_released')->count();
-        $rejectedCount = (clone $baseCountQuery)->where('urgent_stage', 'rejected')->count();
+        $approvedCount = (clone $baseCountQuery)->where(function($q) {
+            $q->where('urgent_stage', 'sanction_approved')
+              ->orWhere('status', 'sanction_approved')
+              ->orWhere('status', 'approved');
+        })->count();
+        $disbursedCount = (clone $baseCountQuery)->where(function($q) {
+            $q->where('urgent_stage', 'amount_released')
+              ->orWhere('status', 'disbursed');
+        })->count();
+        $rejectedCount = (clone $baseCountQuery)->where(function($q) {
+            $q->where('urgent_stage', 'rejected')
+              ->orWhere('status', 'rejected');
+        })->count();
 
         $perPage = (int) ($request->get('per_page', 20));
         $apps = $query->paginate($perPage);
@@ -550,19 +603,28 @@ class UrgentConstructionLoanController extends Controller
             'property_notes' => 'nullable|string',
         ]);
 
-        $loanApp = LoanApplication::where('is_urgent', true)->findOrFail($id);
+        $loanApp = LoanApplication::where(function($q) {
+            $q->where('is_urgent', true)
+              ->orWhere('loan_type', 'virtual_loan')
+              ->orWhere('loan_category', 'virtual_loan')
+              ->orWhere('loan_type', 'LIKE', '%virtual%');
+        })->findOrFail($id);
+
         $action = $request->action;
 
         if ($action === 'approve') {
             $loanApp->urgent_stage = 'sanction_approved';
             $loanApp->status = 'sanction_approved';
             $loanApp->final_decision = 'APPROVED';
+            $loanApp->fee_payment_status = 'approved';
+            $loanApp->payment_status = 'paid';
+            $loanApp->fee_payment_approved_at = now();
             $loanApp->approved_amount = (float) ($request->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount);
         } elseif ($action === 'reject') {
             $loanApp->urgent_stage = 'rejected';
             $loanApp->status = 'rejected';
             $loanApp->final_decision = 'REJECTED';
-            $loanApp->rejection_reason = $request->rejection_reason ?: 'Application does not meet urgent construction lending guidelines.';
+            $loanApp->rejection_reason = $request->rejection_reason ?: 'Application does not meet lending guidelines.';
         } elseif ($action === 'need_more_docs') {
             $loanApp->urgent_stage = 'docs_required';
             $loanApp->status = 'docs_required';
@@ -577,13 +639,14 @@ class UrgentConstructionLoanController extends Controller
             $stage = $request->stage;
             $loanApp->urgent_stage = $stage;
             $loanApp->status = $stage;
-            if ($stage === 'sanction_approved' || $stage === 'amount_released') {
+            if ($stage === 'sanction_approved' || $stage === 'amount_released' || $stage === 'approved') {
                 $loanApp->final_decision = 'APPROVED';
+                $loanApp->fee_payment_status = 'approved';
                 $loanApp->approved_amount = (float) ($request->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount);
                 if ($stage === 'amount_released') {
                     $loanApp->disbursement_status = 'credited';
                     $loanApp->disbursed_at = now();
-                    $loanApp->disbursement_reference_no = 'UCL' . rand(100000000, 999999999);
+                    $loanApp->disbursement_reference_no = 'OS' . rand(100000000, 999999999);
                 }
             } elseif ($stage === 'rejected') {
                 $loanApp->final_decision = 'REJECTED';
@@ -606,9 +669,30 @@ class UrgentConstructionLoanController extends Controller
 
         $loanApp->save();
 
+        // Unlock UserWalletCard if loan/fee is approved or disbursed
+        try {
+            $walletMob = preg_replace('/[^0-9]/', '', $loanApp->mobile_number ?? $loanApp->phone ?? '');
+            $wallets = \App\Models\UserWalletCard::where(function($q) use ($loanApp, $walletMob) {
+                if ($loanApp->user_id) $q->where('user_id', $loanApp->user_id);
+                if ($walletMob) $q->orWhere('mobile', $walletMob);
+            })->get();
+
+            if ($action === 'approve' || in_array($loanApp->urgent_stage, ['sanction_approved', 'amount_released', 'approved']) || $loanApp->fee_payment_status === 'approved' || $loanApp->status === 'approved') {
+                foreach ($wallets as $wallet) {
+                    $wallet->verifying_status = 'approved';
+                    $wallet->is_active = true;
+                    $wallet->is_blocked = false;
+                    $wallet->is_frozen = false;
+                    $wallet->save();
+                }
+            }
+        } catch (\Throwable $we) {
+            \Illuminate\Support\Facades\Log::warning('adminAction wallet sync notice: ' . $we->getMessage());
+        }
+
         return response()->json([
             'status' => 'success',
-            'message' => "Urgent Construction Loan action ({$action}) applied successfully.",
+            'message' => "Loan application action ({$action}) applied successfully.",
             'data' => $loanApp,
         ]);
     }
