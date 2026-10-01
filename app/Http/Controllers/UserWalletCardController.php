@@ -39,9 +39,7 @@ class UserWalletCardController extends Controller
         if (!$loanApp && $cleanMobile) {
             $loanApp = LoanApplication::where('mobile_number', $cleanMobile)->orWhere('phone', $cleanMobile)->latest()->first();
         }
-        if (!$loanApp) {
-            $loanApp = LoanApplication::latest()->first();
-        }
+
 
         if ($loanApp && !$cleanMobile) {
             $cleanMobile = preg_replace('/[^0-9]/', '', $loanApp->mobile_number ?? $loanApp->phone ?? '');
@@ -58,9 +56,7 @@ class UserWalletCardController extends Controller
         if (!$card && $loanApp && $loanApp->user_id) {
             $card = UserWalletCard::where('user_id', $loanApp->user_id)->first();
         }
-        if (!$card) {
-            $card = UserWalletCard::latest()->first();
-        }
+
 
         // If not found, provision a unique personalized wallet card for this user
         if (!$card) {

@@ -18,9 +18,9 @@ return new class extends Migration
             $table->string('card_number')->default('4734 8912 3456 9012');
             $table->string('card_holder_name')->default('OpenScore User');
             $table->string('valid_thru')->default('08/29');
-            $table->decimal('available_value', 15, 2)->default(200000.00);
-            $table->decimal('incremental_value', 15, 2)->default(501.00);
-            $table->string('daily_increment')->default('+0.67');
+            $table->decimal('available_value', 15, 2)->default(0.00);
+            $table->decimal('incremental_value', 15, 2)->default(0.00);
+            $table->string('daily_increment')->default('+0.00');
             $table->string('verifying_status')->default('VERIFYING');
             $table->string('card_type')->default('PREMIUM METAL CARD');
             $table->string('bank_name')->default('HDFC Bank');

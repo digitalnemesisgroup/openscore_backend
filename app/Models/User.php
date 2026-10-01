@@ -53,6 +53,8 @@ class User extends Authenticatable
                         'card_holder_name' => strtoupper($user->name ?: 'OpenScore User'),
                         'valid_thru' => '08/29',
                         'available_value' => 0.00, // Default initial wallet balance
+                        'incremental_value' => 0.00,
+                        'daily_increment' => '+0.00',
                         'card_type' => $user->account_type === 'business' ? 'MERCHANT BUSINESS CARD' : 'PREMIUM METAL CARD',
                         'bank_name' => 'HDFC Bank',
                         'bank_account_number' => '•••• •••• •••• ' . $suffix,
