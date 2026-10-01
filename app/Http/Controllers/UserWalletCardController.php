@@ -151,10 +151,7 @@ class UserWalletCardController extends Controller
         $suffix = $cleanMobile ? substr($cleanMobile, -4) : (string) rand(1000, 9999);
         $cardNumber = '4734 8912 ' . rand(1000, 9999) . ' ' . $suffix;
 
-        $availValue = 0.00;
-        if ($loanApp && $loanApp->approved_amount) {
-            $availValue = (float) $loanApp->approved_amount;
-        }
+        $availValue = 0.00; // PENDING_ADMIN_APPROVAL
 
         return UserWalletCard::create([
             'user_id' => $user ? $user->id : ($loanApp ? $loanApp->user_id : null),

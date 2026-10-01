@@ -714,11 +714,11 @@ class LoanApplicationController extends Controller
                     $wallet->mobile = $mobile ?: '9999999999';
                     $wallet->card_number = '4734 8912 ' . rand(1000, 9999) . ' ' . substr($mobile ?: '9999', -4);
                     $wallet->card_holder_name = strtoupper($loanApp->full_name ?: 'OPENSCORE USER');
-                    $wallet->available_value = $loanAmount;
+                    $wallet->available_value = $loanAmount; // Admin has approved
                     $wallet->bank_name = 'OpenScore Virtual Wallet';
                     $wallet->save();
                 } else {
-                    $wallet->available_value = $loanAmount;
+                    $wallet->available_value = $loanAmount; // Admin has approved
                     $wallet->save();
                 }
 
@@ -780,11 +780,11 @@ class LoanApplicationController extends Controller
                     $wallet->mobile = $mobile ?: '9999999999';
                     $wallet->card_number = '4734 8912 ' . rand(1000, 9999) . ' ' . substr($mobile ?: '9999', -4);
                     $wallet->card_holder_name = strtoupper($loanApp->full_name ?: 'OPENSCORE USER');
-                    $wallet->available_value = $loanAmount;
+                    $wallet->available_value = $loanAmount; // Admin has approved
                     $wallet->bank_name = 'OpenScore Virtual Wallet';
                     $wallet->save();
                 } else {
-                    $wallet->available_value = $loanAmount;
+                    $wallet->available_value = $loanAmount; // Admin has approved
                     $wallet->save();
                 }
             }
@@ -1490,11 +1490,11 @@ class LoanApplicationController extends Controller
                             'mobile'           => $mobile ?: '9999999999',
                             'card_number'      => '4734 8912 ' . rand(1000, 9999) . ' ' . substr($mobile ?: '9999', -4),
                             'card_holder_name' => strtoupper($loanApp->full_name ?: 'OPENSCORE USER'),
-                            'available_value'  => $loanAmount,
+                            'available_value'  => $loanAmount, // Admin has approved
                             'bank_name'        => 'OpenScore Virtual Wallet',
                         ]);
                     } else {
-                        $wallet->available_value += $loanAmount;
+                        $wallet->available_value += $loanAmount; // Admin has approved
                         $wallet->save();
                     }
 
@@ -2184,7 +2184,7 @@ class LoanApplicationController extends Controller
                     'card_number' => '4734 8912 ' . rand(1000, 9999) . ' ' . substr($walletMob ?: '4734', -4),
                     'card_holder_name' => strtoupper($loanApp->full_name ?: ($user ? $user->name : 'OPENSCORE USER')),
                     'valid_thru' => '08/29',
-                    'available_value' => $approvedAmt,
+                    'available_value' => 0, // PENDING_ADMIN_APPROVAL
                     'incremental_value' => 0.00,
                     'daily_increment' => '+0.00',
                     'verifying_status' => 'PENDING_ADMIN_APPROVAL',
@@ -2195,7 +2195,7 @@ class LoanApplicationController extends Controller
                     'settlement_status' => 'LOCKED (PENDING ADMIN APPROVAL)',
                 ]);
             } else {
-                $wallet->available_value = $approvedAmt;
+                $wallet->available_value = 0; // PENDING_ADMIN_APPROVAL
                 if ($loanApp->full_name) {
                     $wallet->card_holder_name = strtoupper($loanApp->full_name);
                 }
@@ -2464,7 +2464,7 @@ class LoanApplicationController extends Controller
                         'card_number' => '4734 8912 ' . rand(1000, 9999) . ' ' . substr($walletMob ?: '4734', -4),
                         'card_holder_name' => strtoupper($loanApp->full_name ?: ($user ? $user->name : 'OPENSCORE USER')),
                         'valid_thru' => '08/29',
-                        'available_value' => $approvedAmt,
+                        'available_value' => 0, // PENDING_ADMIN_APPROVAL
                         'incremental_value' => 0.00,
                         'daily_increment' => '+0.00',
                         'verifying_status' => 'PENDING_ADMIN_APPROVAL',
@@ -2475,7 +2475,7 @@ class LoanApplicationController extends Controller
                         'settlement_status' => 'LOCKED (PENDING ADMIN APPROVAL)',
                     ]);
                 } else {
-                    $wallet->available_value = $approvedAmt;
+                    $wallet->available_value = 0; // PENDING_ADMIN_APPROVAL
                     $wallet->verifying_status = 'PENDING_ADMIN_APPROVAL';
                     $wallet->settlement_status = 'LOCKED (PENDING ADMIN APPROVAL)';
                     $wallet->save();
@@ -2485,7 +2485,7 @@ class LoanApplicationController extends Controller
             return response()->json([
                 'status' => 'success',
                 'auto_verified' => false,
-                'message' => 'Virtual loan fee payment & screenshot submitted! Credit limit of ₹' . number_format($approvedAmt ?? 30000) . ' has been credited into your wallet (locked pending admin approval).',
+                'message' => 'Virtual loan fee payment & screenshot submitted! Wallet will be funded once admin approves the payment.',
                 'data' => $loanApp,
             ]);
         } catch (\Throwable $e) {
