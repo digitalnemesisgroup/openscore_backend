@@ -683,6 +683,14 @@ class UrgentConstructionLoanController extends Controller
                     $wallet->is_active = true;
                     $wallet->is_blocked = false;
                     $wallet->is_frozen = false;
+                    
+                    if ($loanApp->loan_type === 'virtual_loan' || $loanApp->loan_category === 'virtual_loan' || str_contains(strtolower($loanApp->loan_type), 'virtual')) {
+                        $loanAmount = (float) ($loanApp->approved_amount ?: $loanApp->selected_amount ?: $loanApp->required_amount ?: $loanApp->amount ?: 30000);
+                        if ($loanAmount > 0) {
+                            $wallet->available_value = $loanAmount;
+                        }
+                    }
+                    
                     $wallet->save();
                 }
             }
