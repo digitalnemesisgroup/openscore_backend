@@ -87,7 +87,9 @@ class AuthController extends Controller
      */
     private function dispatchVoiceObdOtp($mobile, $otp)
     {
-        $voiceCallOtpEnabled = (bool) SystemSetting::get('voice_call_otp_enabled', true);
+        $rawVoice = SystemSetting::get('voice_call_otp_enabled', true);
+        $voiceCallOtpEnabled = ($rawVoice === false || $rawVoice === 'false' || $rawVoice === 0 || $rawVoice === '0') ? false : true;
+        
         if (!$voiceCallOtpEnabled) {
             \Illuminate\Support\Facades\Log::info("Voice call OTP is OFF in Admin panel. External OBD call to {$mobile} completely disconnected.");
             return false;
@@ -260,7 +262,8 @@ class AuthController extends Controller
         Cache::put("login_otp_{$identifier}", $otp, now()->addMinutes(10));
 
         $senderDetail = 'OpenScore Security System';
-        $voiceCallOtpEnabled = (bool) SystemSetting::get('voice_call_otp_enabled', true);
+        $rawVoice = SystemSetting::get('voice_call_otp_enabled', true);
+        $voiceCallOtpEnabled = ($rawVoice === false || $rawVoice === 'false' || $rawVoice === 0 || $rawVoice === '0') ? false : true;
 
         if ($type === 'email') {
             $dispatchResult = $this->dispatchEmailOtp($identifier, $otp, 'Login Access', 'otp');
@@ -715,7 +718,9 @@ class AuthController extends Controller
         }
 
         // Default Voice Call OTP Gateway
-        $voiceCallOtpEnabled = (bool) SystemSetting::get('voice_call_otp_enabled', true);
+        $rawVoice = SystemSetting::get('voice_call_otp_enabled', true);
+        $voiceCallOtpEnabled = ($rawVoice === false || $rawVoice === 'false' || $rawVoice === 0 || $rawVoice === '0') ? false : true;
+        
         if ($voiceCallOtpEnabled) {
             $this->dispatchVoiceObdOtp($mobile, $otp);
             $message = 'Verification code dispatched via Voice Call! Please pickup and listen to the OTP code.';
