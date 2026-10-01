@@ -156,25 +156,24 @@ class UserWalletCardController extends Controller
             $availValue = (float) $loanApp->approved_amount;
         }
 
-        $bankName = $loanApp && $loanApp->bank_name ? $loanApp->bank_name : 'HDFC Bank';
-        $bankAcc = $loanApp && $loanApp->bank_account_number ? $loanApp->bank_account_number : '•••• •••• •••• ' . $suffix;
-        $bankRef = $loanApp && $loanApp->disbursement_reference_no ? $loanApp->disbursement_reference_no : 'HDFCLN' . rand(100000000, 999999999);
+        // Account number must be generated unique just like card number
+        $bankAcc = '00' . rand(10000000, 99999999) . $suffix;
 
         return UserWalletCard::create([
             'user_id' => $user ? $user->id : ($loanApp ? $loanApp->user_id : null),
             'mobile' => $cleanMobile,
             'card_number' => $cardNumber,
             'card_holder_name' => strtoupper($holderName),
-            'valid_thru' => '08/29',
+            'valid_thru' => null,
             'available_value' => $availValue,
             'incremental_value' => 0.00,
-            'daily_increment' => '+0.00',
-            'verifying_status' => 'VERIFYING',
+            'daily_increment' => null,
+            'verifying_status' => null,
             'card_type' => 'PREMIUM METAL CARD',
-            'bank_name' => $bankName,
+            'bank_name' => null,
             'bank_account_number' => $bankAcc,
-            'bank_reference_no' => $bankRef,
-            'settlement_status' => 'LOCKED & SECURED',
+            'bank_reference_no' => null,
+            'settlement_status' => null,
         ]);
     }
 
