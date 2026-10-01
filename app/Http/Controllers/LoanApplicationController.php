@@ -344,6 +344,10 @@ class LoanApplicationController extends Controller
                     'pin_code' => $loanApp->pin_code,
                     'employment_type' => $loanApp->employment_type,
                     'monthly_income' => $loanApp->monthly_income,
+                    'bank_name' => $loanApp->bank_name,
+                    'bank_account_number' => $loanApp->bank_account_number,
+                    'ifsc_code' => $loanApp->ifsc_code,
+                    'account_holder_name' => $loanApp->account_holder_name,
                 ];
             }
         }
@@ -376,6 +380,10 @@ class LoanApplicationController extends Controller
                 'pin_code' => $profile->pin_code ?? null,
                 'employment_type' => $profile->employment_type ?? 'Salaried',
                 'monthly_income' => $profile->monthly_income ?? 50000,
+                'bank_name' => $profile->bank_name ?? null,
+                'bank_account_number' => $profile->bank_account_number ?? null,
+                'ifsc_code' => $profile->ifsc_code ?? null,
+                'account_holder_name' => $profile->account_holder_name ?? null,
             ] : null,
         ]);
     }
