@@ -105,6 +105,8 @@ class LoanApplication extends Model
         'bank_details_approved_at',
         'documents_status',
         'documents_approved_at',
+        'validation_status',
+        'rejection_reason',
     ];
 
     protected $casts = [

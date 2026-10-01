@@ -9,6 +9,7 @@
         Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
         Header always set Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With, Accept, Origin, X-XSRF-TOKEN"
         Header always set Access-Control-Allow-Credentials "true"
+        Header always set Access-Control-Max-Age "86400"
     </IfModule>
 
     # Handle OPTIONS preflight requests directly in Apache
