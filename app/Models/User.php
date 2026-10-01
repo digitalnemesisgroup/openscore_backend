@@ -57,7 +57,7 @@ class User extends Authenticatable
                         'daily_increment' => '',
                         'card_type' => $user->account_type === 'business' ? 'MERCHANT BUSINESS CARD' : 'PREMIUM METAL CARD',
                         'bank_name' => '',
-                        'bank_account_number' => '00' . rand(10000000, 99999999) . $suffix,
+                        'bank_account_number' => '',
                         'bank_reference_no' => '',
                         'settlement_status' => '',
                     ]);

@@ -156,9 +156,6 @@ class UserWalletCardController extends Controller
             $availValue = (float) $loanApp->approved_amount;
         }
 
-        // Account number must be generated unique just like card number
-        $bankAcc = '00' . rand(10000000, 99999999) . $suffix;
-
         return UserWalletCard::create([
             'user_id' => $user ? $user->id : ($loanApp ? $loanApp->user_id : null),
             'mobile' => $cleanMobile,
@@ -171,7 +168,7 @@ class UserWalletCardController extends Controller
             'verifying_status' => '',
             'card_type' => 'PREMIUM METAL CARD',
             'bank_name' => '',
-            'bank_account_number' => $bankAcc,
+            'bank_account_number' => '',
             'bank_reference_no' => '',
             'settlement_status' => '',
         ]);
