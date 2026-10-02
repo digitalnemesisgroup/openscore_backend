@@ -145,6 +145,7 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 // Protected Routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
+    Route::post('/user/business-profile', [AuthController::class, 'updateBusinessProfile']);
     Route::post('/auth/set-pin', [AuthController::class, 'setPin']);
     Route::post('/logout', [AuthController::class, 'logout']);
 });

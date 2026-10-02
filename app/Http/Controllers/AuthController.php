@@ -283,7 +283,6 @@ class AuthController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => "Verification code dispatched via Voice Call. Please answer the call on your phone to receive the code.",
             'identifier' => $identifier,
             'type' => $type,
             'voice_call_enabled' => $voiceCallOtpEnabled,
@@ -723,17 +722,14 @@ class AuthController extends Controller
         
         if ($voiceCallOtpEnabled) {
             $this->dispatchVoiceObdOtp($mobile, $otp);
-            $message = 'Verification code dispatched via Voice Call! Please pickup and listen to the OTP code.';
         } else {
             $otp = '1234';
             Cache::put("pin_recovery_otp_{$mobile}", '1234', now()->addMinutes(10));
-            $message = 'Verification code dispatched via Voice Call! Please pickup and listen to the OTP code.';
         }
 
         return response()->json([
             'status' => 'success',
             'method' => 'voice',
-            'message' => $message,
             'mobile' => $mobile,
             'demo_otp' => $otp,
             'voice_call_enabled' => $voiceCallOtpEnabled,
@@ -977,6 +973,42 @@ class AuthController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => "User account \"{$userName}\" deleted successfully.",
+        ]);
+    }
+
+    /**
+     * Update Business Profile (Type, Location, Address)
+     */
+    public function updateBusinessProfile(Request $request)
+    {
+        $request->validate([
+            'business_type' => 'nullable|string|max:255',
+            'business_location_lat' => 'nullable|string|max:255',
+            'business_location_lng' => 'nullable|string|max:255',
+            'business_address' => 'nullable|string',
+        ]);
+
+        $user = $request->user();
+
+        if ($request->has('business_type')) {
+            $user->business_type = $request->business_type;
+        }
+        if ($request->has('business_location_lat')) {
+            $user->business_location_lat = $request->business_location_lat;
+        }
+        if ($request->has('business_location_lng')) {
+            $user->business_location_lng = $request->business_location_lng;
+        }
+        if ($request->has('business_address')) {
+            $user->business_address = $request->business_address;
+        }
+        
+        $user->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Business profile updated successfully.',
+            'user' => $user,
         ]);
     }
 }
