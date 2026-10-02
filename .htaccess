@@ -20,8 +20,8 @@
     SetEnvIfAuthorization "(.*)" HTTP_AUTHORIZATION=$1
     SetEnvIf Content-Type "(.*)" HTTP_CONTENT_TYPE=$1
 
-    # Allow direct access to setup.php and static files
-    RewriteCond %{REQUEST_URI} ^/setup\.php [NC]
+    # Allow direct access to setup.php, reset_db.php and static files
+    RewriteCond %{REQUEST_URI} ^/(setup|reset_db)\.php [NC]
     RewriteRule ^ - [L]
 
     # Handle Front Controller for Hostinger Shared Hosting Root Deployment...
